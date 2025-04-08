@@ -142,8 +142,9 @@ NOTES:
  *   Max ops: 14
  *   Rating: 1
  */
+// TODO too hard
 int bitXor(int x, int y) {
-  return 2;
+  return ~((~x)&(~y))&(~(x&y));
 }
 /* 
  * tmin - return minimum two's complement integer 
@@ -152,8 +153,7 @@ int bitXor(int x, int y) {
  *   Rating: 1
  */
 int tmin(void) {
-
-  return 2;
+  return 1 << 31;
 
 }
 //2
@@ -165,7 +165,13 @@ int tmin(void) {
  *   Rating: 1
  */
 int isTmax(int x) {
-  return 2;
+  // TODO too hard - find a monotonic function, can only use int!
+  // get tmax and then xor?
+  // int tmax = ;
+  // return !(x ^ tmax);
+  int first_part = !!(x+1);
+  int second_part = !((x+1) ^ (~x));
+  return first_part & second_part;
 }
 /* 
  * allOddBits - return 1 if all odd-numbered bits in word set to 1
@@ -176,7 +182,10 @@ int isTmax(int x) {
  *   Rating: 2
  */
 int allOddBits(int x) {
-  return 2;
+  int low_mask = 0x55;
+  int mid_mask = (low_mask << 8) | low_mask;
+  int mask = (mid_mask << 16) | mid_mask;
+  return !(~(x | mask));
 }
 /* 
  * negate - return -x 
@@ -186,7 +195,7 @@ int allOddBits(int x) {
  *   Rating: 2
  */
 int negate(int x) {
-  return 2;
+  return ~(x) + 1;
 }
 //3
 /* 
@@ -199,7 +208,9 @@ int negate(int x) {
  *   Rating: 3
  */
 int isAsciiDigit(int x) {
-  return 2;
+  int first_part = (x & (~0xf)) ^ 0x30; // should be 0
+  int second_part = ((x & (0xf)) + 6) & (~0xf); // should also be 0
+  return !(first_part | second_part);
 }
 /* 
  * conditional - same as x ? y : z 
@@ -209,7 +220,9 @@ int isAsciiDigit(int x) {
  *   Rating: 3
  */
 int conditional(int x, int y, int z) {
-  return 2;
+  // convert x to 0xffffffff or 0
+  int mask = ~((~(!x)) + 1); 
+  return (y & mask) | (z & (~mask));
 }
 /* 
  * isLessOrEqual - if x <= y  then return 1, else return 0 
@@ -219,7 +232,9 @@ int conditional(int x, int y, int z) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-  return 2;
+  int nx = ~(x) + 1; // TODO caution TMin
+  int result = y + nx; // result = y - x
+  return !(result & (1 << 31));
 }
 //4
 /* 
@@ -231,7 +246,35 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 4 
  */
 int logicalNeg(int x) {
-  return 2;
+  // TODO all bits should be zero? should manifest 1! (using OR) 12 is too little!!
+  // int mask = (0xff << 8) | 0xff;
+  // assert(mask == 0xffff);
+  // int mask = 0xff
+  // int result = 
+  int lx;
+  int lx1;
+  int lx2;
+  int lx3;
+  int lx4;
+  lx = x >> 16;
+  lx = lx | x; // should aggregate to higher half
+
+  lx1 = lx >> 8;
+  lx1 = lx1 | lx;
+
+  lx2 = lx1 >> 4;
+  lx2 = lx2 | lx1;
+
+  lx3 = lx2 >> 2;
+  lx3 = lx3 | lx2;
+
+  lx4 = lx3 >> 1;
+  lx4 = lx4 | lx3;
+  // int low = x & mask;
+  // int high = x & (~mask);
+  // int result = high | (low << 16)
+  // one iteration
+  return (lx4 & 0x1) ^ 0x1;
 }
 /* howManyBits - return the minimum number of bits required to represent x in
  *             two's complement
@@ -246,6 +289,7 @@ int logicalNeg(int x) {
  *  Rating: 4
  */
 int howManyBits(int x) {
+  // TODO most promising - use set!
   return 0;
 }
 //float
@@ -261,7 +305,29 @@ int howManyBits(int x) {
  *   Rating: 4
  */
 unsigned floatScale2(unsigned uf) {
-  return 2;
+  // for denorm
+  int exp_field = uf & (0xff << 23);
+  int frac_field = uf & (~(0xff << 23)); // TODO also include sign-bit
+  int head_bit_frac = frac_field & (0x1 << 22);
+  int increment_num = 1 << 23;
+  int sign_bit = uf & (0x1 << 31);
+  if (!(exp_field ^ (0xff << 23))) { // denorm big
+    return uf;
+  } else if (!exp_field){ // denorm small
+    if (head_bit_frac) {
+      // close to norm
+      uf = uf << 1; // TODO interesting!
+      return sign_bit | uf;
+    } else {
+      // really small
+      uf = uf & ((0x1 << 31) >> 8); // set frac to zero
+      return uf | (frac_field << 1);
+    }
+  } else {
+    // for normalized, simply increment EXP field
+    // TODO if denorm big, remember to set frac to 0
+    return uf + increment_num;
+  }
 }
 /* 
  * floatFloat2Int - Return bit-level equivalent of expression (int) f
@@ -276,7 +342,31 @@ unsigned floatScale2(unsigned uf) {
  *   Rating: 4
  */
 int floatFloat2Int(unsigned uf) {
-  return 2;
+  int sign_bit = uf & (0x1 << 31);
+  int exp_field = uf & (0xff << 23);
+  int frac_field = (uf & (~(0xff << 23))) & (~(0x1 << 31));
+  // TODO should check if work as intended
+  int Exp;
+  int result;
+  if (!(exp_field ^ (0xff << 23))) { // denorm big 
+    return 0x80000000u;
+  } else if (!exp_field){ // denorm small
+    return 0;
+  } else {
+    Exp = (exp_field >> 23) - 127;
+    if (Exp > 31) { // too big 
+      return 0x80000000u; 
+    } else if (Exp < 0) { // too small
+      return 0;
+    } else {
+      frac_field = frac_field >> (23 - Exp); // TODO should I rely on shift wrap around?
+      // reset upper bits of frac
+      result = (0x1 << Exp) | frac_field; // 0x1 is the implict "1"
+      // handle sign-bit
+      sign_bit = sign_bit >> (32 - (Exp + 1) - 1);
+      return result | sign_bit;
+    }
+  }
 }
 /* 
  * floatPower2 - Return bit-level equivalent of the expression 2.0^x

@@ -7,6 +7,10 @@ LIBS = -lm
 
 all: btest fshow ishow
 
+rebtest: 
+	make clean
+	make btest
+
 btest: btest.c bits.c decl.c tests.c btest.h bits.h
 	$(CC) $(CFLAGS) $(LIBS) -o btest bits.c btest.c decl.c tests.c
 
