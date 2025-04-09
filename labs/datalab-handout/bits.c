@@ -142,7 +142,6 @@ NOTES:
  *   Max ops: 14
  *   Rating: 1
  */
-// TODO too hard
 int bitXor(int x, int y) {
   return ~((~x)&(~y))&(~(x&y));
 }
@@ -154,7 +153,6 @@ int bitXor(int x, int y) {
  */
 int tmin(void) {
   return 1 << 31;
-
 }
 //2
 /*
@@ -165,7 +163,6 @@ int tmin(void) {
  *   Rating: 1
  */
 int isTmax(int x) {
-  // TODO too hard - find a monotonic function, can only use int!
   // get tmax and then xor?
   // int tmax = ;
   // return !(x ^ tmax);
@@ -246,11 +243,6 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 4 
  */
 int logicalNeg(int x) {
-  // TODO all bits should be zero? should manifest 1! (using OR) 12 is too little!!
-  // int mask = (0xff << 8) | 0xff;
-  // assert(mask == 0xffff);
-  // int mask = 0xff
-  // int result = 
   int lx;
   int lx1;
   int lx2;
@@ -270,10 +262,6 @@ int logicalNeg(int x) {
 
   lx4 = lx3 >> 1;
   lx4 = lx4 | lx3;
-  // int low = x & mask;
-  // int high = x & (~mask);
-  // int result = high | (low << 16)
-  // one iteration
   return (lx4 & 0x1) ^ 0x1;
 }
 /* howManyBits - return the minimum number of bits required to represent x in
@@ -289,8 +277,137 @@ int logicalNeg(int x) {
  *  Rating: 4
  */
 int howManyBits(int x) {
-  // TODO most promising - use set!
-  return 0;
+  int state = 0;
+  int sum = 0;
+  int mask = 0x1 << 31; // only take the left-most
+  int sign_bit = x & mask;
+  int curr_x = x;
+  // 1th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 2th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 3th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 4th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 5th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 6th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 7th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 8th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 9th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 10th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 11th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 12th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 13th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 14th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 15th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 16th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 17th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 18th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 19th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 20th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 21th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 22th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 23th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 24th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 25th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 26th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 27th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 28th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 29th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 30th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+  // 31th
+  curr_x = curr_x << 1;
+  state = (!!((curr_x & mask) ^ sign_bit)) | state;
+  sum = sum + state;
+
+  return sum + 1;
 }
 //float
 /* 
@@ -345,7 +462,6 @@ int floatFloat2Int(unsigned uf) {
   int sign_bit = uf & (0x1 << 31);
   int exp_field = uf & (0xff << 23);
   int frac_field = (uf & (~(0xff << 23))) & (~(0x1 << 31));
-  // TODO should check if work as intended
   int Exp;
   int result;
   if (!(exp_field ^ (0xff << 23))) { // denorm big 
@@ -382,5 +498,17 @@ int floatFloat2Int(unsigned uf) {
  *   Rating: 4
  */
 unsigned floatPower2(int x) {
-    return 2;
+    int result;
+    if (x > 127) { // too big
+      result = 0xff << 23;
+    } else if (x < -126) { // denorm
+      if (x < -149) { // too small
+        result = 0;
+      } else {
+        result = 0x1 << (x + 149);
+      }
+    } else { // norm
+      result = (x + 127) << 23;
+    }
+    return result;
 }
