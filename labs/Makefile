@@ -1,3 +1,3 @@
-assignment: 
+assign_%: 
 	git add -A
-	git commit
+	git commit -m "assignment: %"
