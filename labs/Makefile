@@ -4,4 +4,4 @@ $(lab): % : %.tar
 	tar xvf $<
 	rm -f $<
 	git add -A
-	git commit -m "assignment: $@"
+	git commit # this is to avoid accidental commit

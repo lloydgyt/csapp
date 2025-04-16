@@ -9,6 +9,9 @@ all: csim test-trans tracegen
 	# Generate a handin tar file each time you compile
 	-tar -cvf ${USER}-handin.tar  csim.c trans.c 
 
+debug: csim.c cachelab.c cachelab.h
+	$(CC) $(CFLAGS) -g -o DEBUG csim.c cachelab.c
+
 csim: csim.c cachelab.c cachelab.h
 	$(CC) $(CFLAGS) -o csim csim.c cachelab.c -lm 
 
