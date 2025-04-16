@@ -1,4 +1,4 @@
-typedef struct {
+typedef struct { // TODO can only use Tag, not entire address!
     unsigned long address;
     unsigned int LRU_bits;
     bool valid;

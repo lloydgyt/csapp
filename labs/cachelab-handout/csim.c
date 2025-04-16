@@ -8,32 +8,90 @@
 // use #if to toggle verbose? 
 int hit_count = 0, miss_count = 0, eviction_count = 0;
 
-void access_cache(char type, unsigned long address, cache_line *cache) {
-    hit_count += 1;
-    // which policy? 
-        // evicition policy? LRU
-        // write policy? doesn't matter
+void init_cache(cache_line *cache, int set_size, int associtivity) {
+    for (size_t i = 0; i < set_size; i++) // TODO weird conversion!!
+    {
+        int LRU = 0;
+        for (size_t j = 0; j < associtivity; j++)
+        {
+            int index = i * associtivity + j;
+            cache[index].valid = 0;
+            cache[index].LRU_bits = LRU; // TODO how to minimize memory access?
+            LRU++; // from 0 to associtivity - 1
+        }
+        
+    }
+    
+}
+
+void update_LRU(int block_index, int set_index, cache_line *cache, int set_bit, int associtivity) {
+    int base_index = set_index * associtivity;
+    for (size_t j = 0; j < associtivity; j++) {
+        int new_LRU_bits = cache[base_index + j].LRU_bits;
+        if (j == block_index) {
+            new_LRU_bits = 0;
+        } else if (new_LRU_bits != associtivity - 1) {
+            new_LRU_bits += 1;
+        }
+        assert(new_LRU_bits < associtivity && new_LRU_bits >= 0);
+        cache[base_index + j].LRU_bits = new_LRU_bits;
+    }
+}
+
+void replace_cache_line(unsigned long address, int set_index, cache_line *cache, int set_bit, int associtivity) {
+    int base_index = set_index * associtivity;
+    for (size_t j = 0; j < associtivity; j++) {
+        if (cache[base_index + j].LRU_bits != associtivity - 1) continue;
+        cache[base_index + j].address = address;
+        update_LRU(j, set_index, cache, set_bit, associtivity);
+    }
+}
+
+
+
+void access_cache(unsigned long address, cache_line *cache, int set_bit, int associtivity, int block_bit) {
     /* hit count, miss count, eviction count
         we need to know current lines in Cache
         use TIO to compare (the layout of TIO is set by argument options)
     */
-    /*
-        TODO need a DS to store valid bit, LRU bit, tags
-        this DS is grouped into different set
-    */
-    /* TODO bit operation is involved
-        for each line 
-            get its action (special for M)
-            parse its address - get T, I (O is not important)
-            go to Ith-set, compare each "valid" lines with their Tags
-            if hit:
-                update hit_count and update LRU (policy bit)
-            else:
-                update miss count
-                if full: evict first
-                add that address, set valid bit and tags and LRU bits
-    */
-
+    // parse its address - get T, I (O is not important)
+    // go to Ith-set, compare each "valid" lines with their Tags
+    unsigned long mask_T = (-1) << (set_bit + block_bit);
+    unsigned long mask_I = ((1 << (set_bit + 1)) - 1) << block_bit;
+    unsigned long I = address & mask_I;
+    int base_index = (I >> block_bit) * associtivity; 
+    bool success = false;
+    for (size_t j = 0; j < associtivity; j++)
+    {
+        if (cache[base_index + j].valid == 0) continue;
+        if ((address & mask_T) == (cache[base_index + j].address & mask_T)) {
+            success = true;
+            hit_count += 1;
+            // update LRU
+            update_LRU(j, I >> block_bit, cache, set_bit, associtivity);
+            // TODO verbose?
+            return;
+        }
+    }
+    assert(!success);
+    miss_count += 1;
+    // find a place 
+    bool has_space = false;
+    for (size_t j = 0; j < associtivity; j++)
+    {
+        if (cache[base_index + j].valid != 0) continue;
+        cache[base_index + j].valid = 1;
+        cache[base_index + j].address = address;
+        // TODO update LRU
+        update_LRU(j, I >> block_bit, cache, set_bit, associtivity);
+        // TODO verbose?
+        return;
+    }
+    assert(!has_space);
+    eviction_count += 1;
+    // TODO implement later!
+    replace_cache_line(address, I >> block_bit, cache, set_bit, associtivity);
+    return;
 }
 
 int main(int argc, char **argv)
@@ -102,6 +160,7 @@ int main(int argc, char **argv)
         set up DS for Cache
     */
     cache_line *cache = (cache_line *)malloc(set_size * associtivity * sizeof(cache_line));
+    init_cache(cache, set_size, associtivity);
 
     /* TODO parse trace file (action and address)
         M = access 2
@@ -125,12 +184,12 @@ int main(int argc, char **argv)
         assert(match == 2);
         switch (type) {
             case 'M':
-                access_cache(type, address, cache);
-                access_cache(type, address, cache);
+                access_cache(address, cache, set_bit, associtivity, block_bit);
+                access_cache(address, cache, set_bit, associtivity, block_bit);
                 break;
             case 'L':
             case 'S':
-                access_cache(type, address, cache);
+                access_cache(address, cache, set_bit, associtivity, block_bit);
                 break;
             default:
                 // TODO error
