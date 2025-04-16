@@ -7,6 +7,7 @@
 #include "csim.h"
 // use #if to toggle verbose? 
 int hit_count = 0, miss_count = 0, eviction_count = 0;
+bool verbose = false;
 
 void init_cache(cache_line *cache, int set_size, int associtivity) {
     for (size_t i = 0; i < set_size; i++) // TODO weird conversion!!
@@ -44,6 +45,7 @@ void replace_cache_line(unsigned long address, int set_index, cache_line *cache,
         if (cache[base_index + j].LRU_bits != associtivity - 1) continue;
         cache[base_index + j].address = address;
         update_LRU(j, set_index, cache, set_bit, associtivity);
+        return;
     }
 }
 
@@ -57,7 +59,7 @@ void access_cache(unsigned long address, cache_line *cache, int set_bit, int ass
     // parse its address - get T, I (O is not important)
     // go to Ith-set, compare each "valid" lines with their Tags
     unsigned long mask_T = (-1) << (set_bit + block_bit);
-    unsigned long mask_I = ((1 << (set_bit + 1)) - 1) << block_bit;
+    unsigned long mask_I = ((1 << set_bit) - 1) << block_bit;
     unsigned long I = address & mask_I;
     int base_index = (I >> block_bit) * associtivity; 
     bool success = false;
@@ -69,11 +71,17 @@ void access_cache(unsigned long address, cache_line *cache, int set_bit, int ass
             hit_count += 1;
             // update LRU
             update_LRU(j, I >> block_bit, cache, set_bit, associtivity);
-            // TODO verbose?
+            if (verbose) {
+                printf(" hit");
+            }
+            
             return;
         }
     }
     assert(!success);
+    if (verbose) {
+        printf(" miss");
+    }
     miss_count += 1;
     // find a place 
     bool has_space = false;
@@ -88,6 +96,9 @@ void access_cache(unsigned long address, cache_line *cache, int set_bit, int ass
         return;
     }
     assert(!has_space);
+    if (verbose) {
+        printf(" eviction");
+    }
     eviction_count += 1;
     // TODO implement later!
     replace_cache_line(address, I >> block_bit, cache, set_bit, associtivity);
@@ -100,7 +111,6 @@ int main(int argc, char **argv)
     int opt;
     char *trace_filename = NULL;
     int set_bit = -1, associtivity = -1, block_bit = -1;
-    bool verbose = false; // TODO implement later!?
 
     while ((opt = getopt(argc, argv, "vs:E:b:t:")) != -1) {
         // printf("opt = %c, optarg = %s\n", opt, optarg);
@@ -169,32 +179,58 @@ int main(int argc, char **argv)
     */
     FILE *file = fopen(trace_filename, "r");
     if (!file) {
-        printf("Error opening file"); // TODO what is this?
+        printf("Error opening file"); // TODO what is this perror()?
         return 1;
     }
-    // TODO compute the length of the file and then malloc for access array
-    // Or I can do operation inside the read
     char buffer[20];
     while (fgets(buffer, sizeof(buffer), file)) {
         if (buffer[0] != ' ') continue; // ignore "I" (without " ")
 
         char type;
         unsigned long address;
-        int match = sscanf(buffer, " %c %lx,%*d\n", &type, &address);
-        assert(match == 2);
-        switch (type) {
-            case 'M':
-                access_cache(address, cache, set_bit, associtivity, block_bit);
-                access_cache(address, cache, set_bit, associtivity, block_bit);
-                break;
-            case 'L':
-            case 'S':
-                access_cache(address, cache, set_bit, associtivity, block_bit);
-                break;
-            default:
-                // TODO error
-                printf("Error type\n");
-                break;
+        int size;
+        int match = sscanf(buffer, " %c %lx,%d\n", &type, &address, &size);
+        assert(match == 3);
+        if (verbose) {
+            switch (type) {
+                case 'M':
+                    printf("M %lx,%d", address, size);
+                    access_cache(address, cache, set_bit, associtivity, block_bit);
+                    access_cache(address, cache, set_bit, associtivity, block_bit);
+                    printf("\n");
+                    break;
+                case 'L':
+                    printf("L %lx,%d", address, size);
+                    access_cache(address, cache, set_bit, associtivity, block_bit);
+                    printf("\n");
+                    break;
+                case 'S':
+                    printf("S %lx,%d", address, size);
+                    access_cache(address, cache, set_bit, associtivity, block_bit);
+                    printf("\n");
+                    break;
+                default:
+                    // TODO error
+                    printf("Error type\n");
+                    break;
+            }
+        } else {
+            switch (type) {
+                case 'M':
+                    access_cache(address, cache, set_bit, associtivity, block_bit);
+                    access_cache(address, cache, set_bit, associtivity, block_bit);
+                    break;
+                case 'L':
+                    access_cache(address, cache, set_bit, associtivity, block_bit);
+                    break;
+                case 'S':
+                    access_cache(address, cache, set_bit, associtivity, block_bit);
+                    break;
+                default:
+                    // TODO error
+                    printf("Error type\n");
+                    break;
+            }
         }
     }
     
