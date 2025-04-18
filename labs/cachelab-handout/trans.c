@@ -12,7 +12,10 @@
 #include <assert.h>
 #include <stdbool.h>
 
+void print_matrix(const char* name, int rows, int cols, int matrix[][32]);
 int is_transpose(int M, int N, int A[N][M], int B[M][N]);
+void transpose_lazy_32_32(int M, int N, int A[N][M], int B[M][N]);
+void transpose_lazy_64(int M, int N, int A[N][M], int B[M][N]);
 
 /* 
  * transpose_submit - This is the solution transpose function that you
@@ -25,53 +28,12 @@ int is_transpose(int M, int N, int A[N][M], int B[M][N]);
 char transpose_submit_desc[] = "Transpose submission";
 void transpose_submit(int M, int N, int A[N][M], int B[M][N]) {
     // 4 by 4 blocking and change access pattern
-    int stride;
     if (M == 32 && N == 32) {
-        int i, j, ii, jj, flag;
-        stride = 8; // 8 by 8
-        for (i = 0; i < N; i += stride) {
-            for (j = 0; j < M; j += stride) {
-                flag = false;
-                for (ii = i; ii < i + stride; ii++) {
-                    for (jj = j; jj < j + stride; jj++) {
-                        if (jj == ii) {
-                            flag = true;
-                            continue;
-                        } else {
-                            B[jj][ii] = A[ii][jj];
-                        }
-                    }
-                    if (flag) {
-                        assert(i == j);
-                        B[ii][ii] = A[ii][ii];
-                    }
-                }
-            }
-        }    
+        transpose_lazy_32_32(M, N, A, B);
     }
 
-    if (M == 64 && N == 64) { // TODO if I have 16 variables!
-        int i, j, ii, jj, flag;
-        stride = 4; // 4 by 4
-        for (i = 0; i < N; i += stride) {
-            for (j = 0; j < M; j += stride) {
-                flag = false;
-                for (ii = i; ii < i + stride; ii++) {
-                    for (jj = j; jj < j + stride; jj++) {
-                        if (jj == ii) {
-                            flag = true;
-                            continue;
-                        } else {
-                            B[jj][ii] = A[ii][jj];
-                        }
-                    }
-                    if (flag) {
-                        assert(i == j);
-                        B[ii][ii] = A[ii][ii];
-                    }
-                }
-            }
-        }    
+    if (M == 64 && N == 64) {
+        transpose_lazy_64(M, N, A, B);
     }
 
 }
@@ -247,6 +209,104 @@ void transpose_4_4(int M, int N, int A[N][M], int B[M][N])
     // TODO handle non-even case
 
 }
+
+char transpose_lazy_64_desc[] = "using lazy technique to get 1300 misses";
+void transpose_lazy_64(int M, int N, int A[N][M], int B[M][N]) {
+    int i, j, ii, jj, a, b, c, d, counter;
+
+    // inside 8 by 8 block
+    for (i = 0; i < N; i += 8) {
+        for (j = 0; j < M; j += 8) {
+            // TODO assume there is an intermediate counter!
+            // inside 4 by 4 block
+            for (ii = 0; ii < 4; ii++) { 
+                for (jj = 0; jj < 4; jj++) {
+                    B[j + 0 + jj][i + 0 + ii] = A[i + 0 + ii][j + 0 + jj];
+                    B[j + 0 + jj][i + 4 + ii] = A[i + 0 + ii][j + 4 + jj];
+                }
+                // TODO how to assert?
+            }
+            
+            // TODO do this 4 times
+            for (counter = 0; counter < 4; counter++) {
+                // 1. store in local vars
+                a = B[j + 0 + counter][i + 4 + 0];
+                b = B[j + 0 + counter][i + 4 + 1];
+                c = B[j + 0 + counter][i + 4 + 2];
+                d = B[j + 0 + counter][i + 4 + 3];
+                // 2. move A to B
+                B[j + 0 + counter][i + 4 + 0] = A[i + 4 + 0][j + 0 + counter];
+                B[j + 0 + counter][i + 4 + 1] = A[i + 4 + 1][j + 0 + counter];
+                B[j + 0 + counter][i + 4 + 2] = A[i + 4 + 2][j + 0 + counter];
+                B[j + 0 + counter][i + 4 + 3] = A[i + 4 + 3][j + 0 + counter];
+                // 3. move local vars to new B
+                B[j + 4 + counter][i + 0 + 0] = a;
+                B[j + 4 + counter][i + 0 + 1] = b;
+                B[j + 4 + counter][i + 0 + 2] = c;
+                B[j + 4 + counter][i + 0 + 3] = d;
+            }
+            for (ii = 0; ii < 4; ii++) {
+                for (jj = 0; jj < 4; jj++) {
+                    B[j + 4 + jj][i + 4 + ii] = A[i + 4 + ii][j + 4 + jj];
+                }
+            }
+        }
+    }    
+
+}
+
+char transpose_lazy_32_32_desc[] = "using lazy technique to get 256 misses";
+void transpose_lazy_32_32(int M, int N, int A[N][M], int B[M][N])
+{
+        int i, j, ii, jj, stride;
+        stride = 8; // 8 by 8 blocking
+        for (i = 8; i < N; i += stride) {
+            // process main diagonal first, without (0, 0) blocks
+            j = i;
+            // use (1, 0) block as temp-block
+            for (ii = 0; ii < stride; ii++) { // use local indexing
+                for (jj = 0; jj < stride; jj++) {
+                    B[stride + ii][jj] = A[i + ii][j + jj];
+                }
+            }
+            for (ii = 0; ii < stride; ii++) {
+                for (jj = 0; jj < stride; jj++) {
+                    B[i + jj][j + ii] = B[stride + ii][jj];
+                }
+            }
+        }
+        // TODO move (0,1) block to (1, 0) block 
+        for (ii = 0; ii < stride; ii++) {
+            for (jj = 0; jj < stride; jj++) {
+                B[stride + jj][ii] = A[ii][stride + jj];
+            }
+        }
+        // move (0, 0) to (0, 1)
+        for (ii = 0; ii < stride; ii++) {
+            for (jj = 0; jj < stride; jj++) {
+                B[ii][stride + jj] = A[ii][jj];
+            }
+        }
+        // print_matrix("B", 32, 32, B); // TODO delete later with declaration
+        // move (0, 1) to (0, 0)
+        for (ii = 0; ii < stride; ii++) {
+            for (jj = 0; jj < stride; jj++) {
+                B[ii][jj] = B[jj][stride + ii];
+            }
+        }
+        // print_matrix("B", 32, 32, B); // TODO delete later with declaration
+        for (j = 0; j < M; j += stride) {
+            for (i = 0; i < N; i += stride) { // this is global indexing
+                if (i == j || (i == 1 && j == 0)) continue;
+                for (ii = i; ii < i + stride; ii++) {
+                    for (jj = j; jj < j + stride; jj++) {
+                        B[jj][ii] = A[ii][jj];
+                    }
+                }
+            }
+        }    
+}
+
 /*
  * registerFunctions - This function registers your transpose
  *     functions with the driver.  At runtime, the driver will
@@ -258,6 +318,8 @@ void registerFunctions()
 {
     /* Register your solution function */
     registerTransFunction(transpose_submit, transpose_submit_desc); 
+
+    registerTransFunction(transpose_lazy_32_32, transpose_lazy_32_32_desc); 
 
     /* Register any additional transpose functions */
     // registerTransFunction(trans, trans_desc); 
