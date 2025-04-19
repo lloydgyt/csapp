@@ -1,3 +1,8 @@
+#ifndef CSIM_H
+#define CSIM_H
+
+#include <stdbool.h>
+
 typedef struct { // TODO can only use Tag, not entire address!
     unsigned long address;
     unsigned int LRU_bits;
@@ -8,3 +13,5 @@ typedef struct { // TODO not useful
     unsigned long address;
     char type;
 } access;
+
+#endif
