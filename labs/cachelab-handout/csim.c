@@ -1,31 +1,30 @@
-#include "cachelab.h"
-#include <stdlib.h>
-#include <stdio.h>
+#include "csim.h"
+
+#include <assert.h>
 #include <getopt.h>
 #include <stdbool.h>
-#include <assert.h>
-#include "csim.h"
-// use #if to toggle verbose? 
+#include <stdio.h>
+#include <stdlib.h>
+
+#include "cachelab.h"
+// use #if to toggle verbose?
 int hit_count = 0, miss_count = 0, eviction_count = 0;
 bool verbose = false;
 
 void init_cache(cache_line *cache, int set_size, int associtivity) {
-    for (size_t i = 0; i < set_size; i++) // TODO weird conversion!!
-    {
+    for (size_t i = 0; i < set_size; i++) { // TODO weird conversion!!
         int LRU = 0;
-        for (size_t j = 0; j < associtivity; j++)
-        {
+        for (size_t j = 0; j < associtivity; j++) {
             int index = i * associtivity + j;
             cache[index].valid = 0;
             cache[index].LRU_bits = LRU; // TODO how to minimize memory access?
-            LRU++; // from 0 to associtivity - 1
+            LRU++;                       // from 0 to associtivity - 1
         }
-        
     }
-    
 }
 
-void update_LRU(int block_index, int set_index, cache_line *cache, int set_bit, int associtivity) {
+void update_LRU(int block_index, int set_index, cache_line *cache, int set_bit,
+                int associtivity) {
     int base_index = set_index * associtivity;
     for (size_t j = 0; j < associtivity; j++) {
         int new_LRU_bits = cache[base_index + j].LRU_bits;
@@ -39,19 +38,20 @@ void update_LRU(int block_index, int set_index, cache_line *cache, int set_bit, 
     }
 }
 
-void replace_cache_line(unsigned long address, int set_index, cache_line *cache, int set_bit, int associtivity) {
+void replace_cache_line(unsigned long address, int set_index, cache_line *cache,
+                        int set_bit, int associtivity) {
     int base_index = set_index * associtivity;
     for (size_t j = 0; j < associtivity; j++) {
-        if (cache[base_index + j].LRU_bits != associtivity - 1) continue;
+        if (cache[base_index + j].LRU_bits != associtivity - 1)
+            continue;
         cache[base_index + j].address = address;
         update_LRU(j, set_index, cache, set_bit, associtivity);
         return;
     }
 }
 
-
-
-void access_cache(unsigned long address, cache_line *cache, int set_bit, int associtivity, int block_bit) {
+void access_cache(unsigned long address, cache_line *cache, int set_bit,
+                  int associtivity, int block_bit) {
     /* hit count, miss count, eviction count
         we need to know current lines in Cache
         use TIO to compare (the layout of TIO is set by argument options)
@@ -61,11 +61,11 @@ void access_cache(unsigned long address, cache_line *cache, int set_bit, int ass
     unsigned long mask_T = (-1) << (set_bit + block_bit);
     unsigned long mask_I = ((1 << set_bit) - 1) << block_bit;
     unsigned long I = address & mask_I;
-    int base_index = (I >> block_bit) * associtivity; 
+    int base_index = (I >> block_bit) * associtivity;
     bool success = false;
-    for (size_t j = 0; j < associtivity; j++)
-    {
-        if (cache[base_index + j].valid == 0) continue;
+    for (size_t j = 0; j < associtivity; j++) {
+        if (cache[base_index + j].valid == 0)
+            continue;
         if ((address & mask_T) == (cache[base_index + j].address & mask_T)) {
             success = true;
             hit_count += 1;
@@ -74,7 +74,7 @@ void access_cache(unsigned long address, cache_line *cache, int set_bit, int ass
             if (verbose) {
                 printf(" hit");
             }
-            
+
             return;
         }
     }
@@ -83,11 +83,11 @@ void access_cache(unsigned long address, cache_line *cache, int set_bit, int ass
         printf(" miss");
     }
     miss_count += 1;
-    // find a place 
+    // find a place
     bool has_space = false;
-    for (size_t j = 0; j < associtivity; j++)
-    {
-        if (cache[base_index + j].valid != 0) continue;
+    for (size_t j = 0; j < associtivity; j++) {
+        if (cache[base_index + j].valid != 0)
+            continue;
         cache[base_index + j].valid = 1;
         cache[base_index + j].address = address;
         // TODO update LRU
@@ -105,8 +105,7 @@ void access_cache(unsigned long address, cache_line *cache, int set_bit, int ass
     return;
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     // handle cli args (options and file)
     int opt;
     char *trace_filename = NULL;
@@ -115,28 +114,28 @@ int main(int argc, char **argv)
     while ((opt = getopt(argc, argv, "vs:E:b:t:")) != -1) {
         // printf("opt = %c, optarg = %s\n", opt, optarg);
         switch (opt) {
-            case 'v': 
-                verbose = true;
-                break;
-            case 's':
-                set_bit = atoi(optarg);
-                assert(set_bit != -1);
-                break;
-            case 'E':
-                associtivity = atoi(optarg);
-                assert(associtivity != -1);
-                break;
-            case 'b':
-                block_bit = atoi(optarg);
-                assert(block_bit != -1);
-                break;
-            case 't':
-                trace_filename = optarg;
-                assert(trace_filename != NULL);
-                break;
-            default: // TODO seems to be handled by getopt()
-                fprintf(stderr, "Unknown option: -%c\n", optopt);
-                return 1;
+        case 'v':
+            verbose = true;
+            break;
+        case 's':
+            set_bit = atoi(optarg);
+            assert(set_bit != -1);
+            break;
+        case 'E':
+            associtivity = atoi(optarg);
+            assert(associtivity != -1);
+            break;
+        case 'b':
+            block_bit = atoi(optarg);
+            assert(block_bit != -1);
+            break;
+        case 't':
+            trace_filename = optarg;
+            assert(trace_filename != NULL);
+            break;
+        default: // TODO seems to be handled by getopt()
+            fprintf(stderr, "Unknown option: -%c\n", optopt);
+            return 1;
         }
     }
     // check if all necessary option is set
@@ -169,7 +168,8 @@ int main(int argc, char **argv)
     /*
         set up DS for Cache
     */
-    cache_line *cache = (cache_line *)malloc(set_size * associtivity * sizeof(cache_line));
+    cache_line *cache =
+        (cache_line *)malloc(set_size * associtivity * sizeof(cache_line));
     init_cache(cache, set_size, associtivity);
 
     /* TODO parse trace file (action and address)
@@ -184,7 +184,8 @@ int main(int argc, char **argv)
     }
     char buffer[20];
     while (fgets(buffer, sizeof(buffer), file)) {
-        if (buffer[0] != ' ') continue; // ignore "I" (without " ")
+        if (buffer[0] != ' ')
+            continue; // ignore "I" (without " ")
 
         char type;
         unsigned long address;
@@ -193,47 +194,47 @@ int main(int argc, char **argv)
         assert(match == 3);
         if (verbose) {
             switch (type) {
-                case 'M':
-                    printf("M %lx,%d", address, size);
-                    access_cache(address, cache, set_bit, associtivity, block_bit);
-                    access_cache(address, cache, set_bit, associtivity, block_bit);
-                    printf("\n");
-                    break;
-                case 'L':
-                    printf("L %lx,%d", address, size);
-                    access_cache(address, cache, set_bit, associtivity, block_bit);
-                    printf("\n");
-                    break;
-                case 'S':
-                    printf("S %lx,%d", address, size);
-                    access_cache(address, cache, set_bit, associtivity, block_bit);
-                    printf("\n");
-                    break;
-                default:
-                    // TODO error
-                    printf("Error type\n");
-                    break;
+            case 'M':
+                printf("M %lx,%d", address, size);
+                access_cache(address, cache, set_bit, associtivity, block_bit);
+                access_cache(address, cache, set_bit, associtivity, block_bit);
+                printf("\n");
+                break;
+            case 'L':
+                printf("L %lx,%d", address, size);
+                access_cache(address, cache, set_bit, associtivity, block_bit);
+                printf("\n");
+                break;
+            case 'S':
+                printf("S %lx,%d", address, size);
+                access_cache(address, cache, set_bit, associtivity, block_bit);
+                printf("\n");
+                break;
+            default:
+                // TODO error
+                printf("Error type\n");
+                break;
             }
         } else {
             switch (type) {
-                case 'M':
-                    access_cache(address, cache, set_bit, associtivity, block_bit);
-                    access_cache(address, cache, set_bit, associtivity, block_bit);
-                    break;
-                case 'L':
-                    access_cache(address, cache, set_bit, associtivity, block_bit);
-                    break;
-                case 'S':
-                    access_cache(address, cache, set_bit, associtivity, block_bit);
-                    break;
-                default:
-                    // TODO error
-                    printf("Error type\n");
-                    break;
+            case 'M':
+                access_cache(address, cache, set_bit, associtivity, block_bit);
+                access_cache(address, cache, set_bit, associtivity, block_bit);
+                break;
+            case 'L':
+                access_cache(address, cache, set_bit, associtivity, block_bit);
+                break;
+            case 'S':
+                access_cache(address, cache, set_bit, associtivity, block_bit);
+                break;
+            default:
+                // TODO error
+                printf("Error type\n");
+                break;
             }
         }
     }
-    
+
     printSummary(hit_count, miss_count, eviction_count);
     free(cache); // TODO when to free?
     return 0;
