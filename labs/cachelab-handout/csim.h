@@ -3,15 +3,10 @@
 
 #include <stdbool.h>
 
-typedef struct { // TODO can only use Tag, not entire address!
-    unsigned long address;
+typedef struct {
+    unsigned long tag;
     unsigned int LRU_bits;
-    bool valid; // TODO change code to use bool instead (use int by now)
+    bool valid;
 } cache_line;
-
-typedef struct { // TODO not useful
-    unsigned long address;
-    char type;
-} access;
 
 #endif
