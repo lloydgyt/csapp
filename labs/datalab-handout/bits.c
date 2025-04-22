@@ -1,8 +1,9 @@
-/* 
- * CS:APP Data Lab 
- * 
+#include <assert.h>
+/*
+ * CS:APP Data Lab
+ *
  * <Please put your name and userid here>
- * 
+ *
  * bits.c - Source file with your solutions to the Lab.
  *          This is the file you will hand in to your instructor.
  *
@@ -10,7 +11,7 @@
  * compiler. You can still use printf for debugging without including
  * <stdio.h>, although you might get a compiler warning. In general,
  * it's not good practice to ignore compiler warnings, but in this
- * case it's OK.  
+ * case it's OK.
  */
 
 #if 0
@@ -132,45 +133,40 @@ NOTES:
  *      the correct answers.
  */
 
-
 #endif
-//1
-/* 
- * bitXor - x^y using only ~ and & 
+// 1
+/*
+ * bitXor - x^y using only ~ and &
  *   Example: bitXor(4, 5) = 1
  *   Legal ops: ~ &
  *   Max ops: 14
  *   Rating: 1
  */
-int bitXor(int x, int y) {
-  return ~((~x)&(~y))&(~(x&y));
-}
-/* 
- * tmin - return minimum two's complement integer 
+int bitXor(int x, int y) { return ~((~x) & (~y)) & (~(x & y)); }
+/*
+ * tmin - return minimum two's complement integer
  *   Legal ops: ! ~ & ^ | + << >>
  *   Max ops: 4
  *   Rating: 1
  */
-int tmin(void) {
-  return 1 << 31;
-}
-//2
+int tmin(void) { return 1 << 31; }
+// 2
 /*
  * isTmax - returns 1 if x is the maximum, two's complement number,
- *     and 0 otherwise 
+ *     and 0 otherwise
  *   Legal ops: ! ~ & ^ | +
  *   Max ops: 10
  *   Rating: 1
  */
 int isTmax(int x) {
-  // get tmax and then xor?
-  // int tmax = ;
-  // return !(x ^ tmax);
-  int first_part = !!(x+1);
-  int second_part = !((x+1) ^ (~x));
-  return first_part & second_part;
+    // get tmax and then xor?
+    // int tmax = ;
+    // return !(x ^ tmax);
+    int first_part = !!(x + 1);
+    int second_part = !((x + 1) ^ (~x));
+    return first_part & second_part;
 }
-/* 
+/*
  * allOddBits - return 1 if all odd-numbered bits in word set to 1
  *   where bits are numbered from 0 (least significant) to 31 (most significant)
  *   Examples allOddBits(0xFFFFFFFD) = 0, allOddBits(0xAAAAAAAA) = 1
@@ -179,90 +175,87 @@ int isTmax(int x) {
  *   Rating: 2
  */
 int allOddBits(int x) {
-  int low_mask = 0x55;
-  int mid_mask = (low_mask << 8) | low_mask;
-  int mask = (mid_mask << 16) | mid_mask;
-  return !(~(x | mask));
+    int low_mask = 0x55;
+    int mid_mask = (low_mask << 8) | low_mask;
+    int mask = (mid_mask << 16) | mid_mask;
+    return !(~(x | mask));
 }
-/* 
- * negate - return -x 
+/*
+ * negate - return -x
  *   Example: negate(1) = -1.
  *   Legal ops: ! ~ & ^ | + << >>
  *   Max ops: 5
  *   Rating: 2
  */
-int negate(int x) {
-  return ~(x) + 1;
-}
-//3
-/* 
- * isAsciiDigit - return 1 if 0x30 <= x <= 0x39 (ASCII codes for characters '0' to '9')
- *   Example: isAsciiDigit(0x35) = 1.
- *            isAsciiDigit(0x3a) = 0.
+int negate(int x) { return ~(x) + 1; }
+// 3
+/*
+ * isAsciiDigit - return 1 if 0x30 <= x <= 0x39 (ASCII codes for characters '0'
+ * to '9') Example: isAsciiDigit(0x35) = 1. isAsciiDigit(0x3a) = 0.
  *            isAsciiDigit(0x05) = 0.
  *   Legal ops: ! ~ & ^ | + << >>
  *   Max ops: 15
  *   Rating: 3
  */
 int isAsciiDigit(int x) {
-  int first_part = (x & (~0xf)) ^ 0x30; // should be 0
-  int second_part = ((x & (0xf)) + 6) & (~0xf); // should also be 0
-  return !(first_part | second_part);
+    int first_part = (x & (~0xf)) ^ 0x30;         // should be 0
+    int second_part = ((x & (0xf)) + 6) & (~0xf); // should also be 0
+    return !(first_part | second_part);
 }
-/* 
- * conditional - same as x ? y : z 
+/*
+ * conditional - same as x ? y : z
  *   Example: conditional(2,4,5) = 4
  *   Legal ops: ! ~ & ^ | + << >>
  *   Max ops: 16
  *   Rating: 3
  */
 int conditional(int x, int y, int z) {
-  // convert x to 0xffffffff or 0
-  int mask = ~((~(!x)) + 1); 
-  return (y & mask) | (z & (~mask));
+    // convert x to 0xffffffff or 0
+    int mask = ~((~(!x)) + 1);
+    return (y & mask) | (z & (~mask));
 }
-/* 
- * isLessOrEqual - if x <= y  then return 1, else return 0 
+/*
+ * isLessOrEqual - if x <= y  then return 1, else return 0
  *   Example: isLessOrEqual(4,5) = 1.
  *   Legal ops: ! ~ & ^ | + << >>
  *   Max ops: 24
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-  int nx = ~(x) + 1; // TODO caution TMin
-  int result = y + nx; // result = y - x
-  return !(result & (1 << 31));
+    int nx = ~(x) + 1;   // TODO caution TMin
+    int result = y + nx; // result = y - x
+    return !(result & (1 << 31));
 }
-//4
-/* 
- * logicalNeg - implement the ! operator, using all of 
+// 4
+/*
+ * logicalNeg - implement the ! operator, using all of
  *              the legal operators except !
  *   Examples: logicalNeg(3) = 0, logicalNeg(0) = 1
  *   Legal ops: ~ & ^ | + << >>
  *   Max ops: 12
- *   Rating: 4 
+ *   Rating: 4
  */
 int logicalNeg(int x) {
-  int lx;
-  int lx1;
-  int lx2;
-  int lx3;
-  int lx4;
-  lx = x >> 16;
-  lx = lx | x; // should aggregate to higher half
+    int lx;
+    int lx1;
+    int lx2;
+    int lx3;
+    int lx4;
+    lx = x >> 16;
+    lx = lx | x; // should aggregate to higher half
 
-  lx1 = lx >> 8;
-  lx1 = lx1 | lx;
+    lx1 = lx >> 8;
+    lx1 = lx1 | lx;
 
-  lx2 = lx1 >> 4;
-  lx2 = lx2 | lx1;
+    lx2 = lx1 >> 4;
+    lx2 = lx2 | lx1;
 
-  lx3 = lx2 >> 2;
-  lx3 = lx3 | lx2;
+    lx3 = lx2 >> 2;
+    lx3 = lx3 | lx2;
 
-  lx4 = lx3 >> 1;
-  lx4 = lx4 | lx3;
-  return (lx4 & 0x1) ^ 0x1;
+    lx4 = lx3 >> 1;
+    lx4 = lx4 | lx3;
+    return (lx4 & 0x1) ^ 0x1;
 }
 /* howManyBits - return the minimum number of bits required to represent x in
  *             two's complement
@@ -277,140 +270,48 @@ int logicalNeg(int x) {
  *  Rating: 4
  */
 int howManyBits(int x) {
-  int state = 0;
-  int sum = 0;
-  int mask = 0x1 << 31; // only take the left-most
-  int sign_bit = x & mask;
-  int curr_x = x;
-  // 1th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 2th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 3th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 4th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 5th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 6th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 7th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 8th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 9th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 10th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 11th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 12th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 13th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 14th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 15th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 16th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 17th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 18th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 19th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 20th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 21th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 22th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 23th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 24th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 25th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 26th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 27th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 28th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 29th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 30th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
-  // 31th
-  curr_x = curr_x << 1;
-  state = (!!((curr_x & mask) ^ sign_bit)) | state;
-  sum = sum + state;
+    int sign_bit = x & (1 << 31);
+    int zero_bits = 0;
+    x = x ^ (sign_bit >> 31);
+    int flag_16, flag_8, flag_4, flag_2, flag_1, flag_0;
+    // now x start with a bunch of 0s
 
-  return sum + 1;
+    int mask_16 = (1 << 31) >> 15;
+    // TODO delete later
+    int flag_16 = !!!(x & mask_16);
+    x = x << (flag_16 << 4);
+    zero_bits += (flag_16 << 4);
+
+    int mask_8 = (1 << 31) >> 7;
+    // TODO delete later
+    int flag_8 = !!!(x & mask_8);
+    x = x << (flag_8 << 3);
+    zero_bits += (flag_8 << 3);
+
+    int mask_4 = (1 << 31) >> 3;
+    // TODO delete later
+    int flag_4 = !!!(x & mask_4);
+    x = x << (flag_4 << 2);
+    zero_bits += (flag_4 << 2);
+
+    int mask_2 = (1 << 31) >> 1;
+    // TODO delete later
+    int flag_2 = !!!(x & mask_2);
+    x = x << (flag_2 << 1);
+    zero_bits += (flag_2 << 1);
+
+    int mask_1 = (1 << 31) >> 0;
+    // TODO delete later
+    int flag_1 = !!!(x & mask_1);
+    x = x << (flag_1 << 0);
+    zero_bits += (flag_1 << 0);
+
+    int flag_0 = !!!(x & mask_1);
+    zero_bits += flag_0;
+    return (32 - zero_bits + 1);
 }
-//float
-/* 
+// float
+/*
  * floatScale2 - Return bit-level equivalent of expression 2*f for
  *   floating point argument f.
  *   Both the argument and result are passed as unsigned int's, but
@@ -422,31 +323,31 @@ int howManyBits(int x) {
  *   Rating: 4
  */
 unsigned floatScale2(unsigned uf) {
-  // for denorm
-  int exp_field = uf & (0xff << 23);
-  int frac_field = uf & (~(0xff << 23)); // TODO also include sign-bit
-  int head_bit_frac = frac_field & (0x1 << 22);
-  int increment_num = 1 << 23;
-  int sign_bit = uf & (0x1 << 31);
-  if (!(exp_field ^ (0xff << 23))) { // denorm big
-    return uf;
-  } else if (!exp_field){ // denorm small
-    if (head_bit_frac) {
-      // close to norm
-      uf = uf << 1; // TODO interesting!
-      return sign_bit | uf;
+    // for denorm
+    int exp_field = uf & (0xff << 23);
+    int frac_field = uf & (~(0xff << 23)); // TODO also include sign-bit
+    int head_bit_frac = frac_field & (0x1 << 22);
+    int increment_num = 1 << 23;
+    int sign_bit = uf & (0x1 << 31);
+    if (!(exp_field ^ (0xff << 23))) { // denorm big
+        return uf;
+    } else if (!exp_field) { // denorm small
+        if (head_bit_frac) {
+            // close to norm
+            uf = uf << 1; // TODO interesting!
+            return sign_bit | uf;
+        } else {
+            // really small
+            uf = uf & ((0x1 << 31) >> 8); // set frac to zero
+            return uf | (frac_field << 1);
+        }
     } else {
-      // really small
-      uf = uf & ((0x1 << 31) >> 8); // set frac to zero
-      return uf | (frac_field << 1);
+        // for normalized, simply increment EXP field
+        // TODO if denorm big, remember to set frac to 0
+        return uf + increment_num;
     }
-  } else {
-    // for normalized, simply increment EXP field
-    // TODO if denorm big, remember to set frac to 0
-    return uf + increment_num;
-  }
 }
-/* 
+/*
  * floatFloat2Int - Return bit-level equivalent of expression (int) f
  *   for floating point argument f.
  *   Argument is passed as unsigned int, but
@@ -459,32 +360,33 @@ unsigned floatScale2(unsigned uf) {
  *   Rating: 4
  */
 int floatFloat2Int(unsigned uf) {
-  int sign_bit = uf & (0x1 << 31);
-  int exp_field = uf & (0xff << 23);
-  int frac_field = (uf & (~(0xff << 23))) & (~(0x1 << 31));
-  int Exp;
-  int result;
-  if (!(exp_field ^ (0xff << 23))) { // denorm big 
-    return 0x80000000u;
-  } else if (!exp_field){ // denorm small
-    return 0;
-  } else {
-    Exp = (exp_field >> 23) - 127;
-    if (Exp > 31) { // too big 
-      return 0x80000000u; 
-    } else if (Exp < 0) { // too small
-      return 0;
+    int sign_bit = uf & (0x1 << 31);
+    int exp_field = uf & (0xff << 23);
+    int frac_field = (uf & (~(0xff << 23))) & (~(0x1 << 31));
+    int Exp;
+    int result;
+    if (!(exp_field ^ (0xff << 23))) { // denorm big
+        return 0x80000000u;
+    } else if (!exp_field) { // denorm small
+        return 0;
     } else {
-      frac_field = frac_field >> (23 - Exp); // TODO should I rely on shift wrap around?
-      // reset upper bits of frac
-      result = (0x1 << Exp) | frac_field; // 0x1 is the implict "1"
-      // handle sign-bit
-      sign_bit = sign_bit >> (32 - (Exp + 1) - 1);
-      return result | sign_bit;
+        Exp = (exp_field >> 23) - 127;
+        if (Exp > 31) { // too big
+            return 0x80000000u;
+        } else if (Exp < 0) { // too small
+            return 0;
+        } else {
+            frac_field = frac_field >>
+                         (23 - Exp); // TODO should I rely on shift wrap around?
+            // reset upper bits of frac
+            result = (0x1 << Exp) | frac_field; // 0x1 is the implict "1"
+            // handle sign-bit
+            sign_bit = sign_bit >> (32 - (Exp + 1) - 1);
+            return result | sign_bit;
+        }
     }
-  }
 }
-/* 
+/*
  * floatPower2 - Return bit-level equivalent of the expression 2.0^x
  *   (2.0 raised to the power x) for any 32-bit integer x.
  *
@@ -492,23 +394,23 @@ int floatFloat2Int(unsigned uf) {
  *   representation as the single-precision floating-point number 2.0^x.
  *   If the result is too small to be represented as a denorm, return
  *   0. If too large, return +INF.
- * 
- *   Legal ops: Any integer/unsigned operations incl. ||, &&. Also if, while 
- *   Max ops: 30 
+ *
+ *   Legal ops: Any integer/unsigned operations incl. ||, &&. Also if, while
+ *   Max ops: 30
  *   Rating: 4
  */
 unsigned floatPower2(int x) {
     int result;
     if (x > 127) { // too big
-      result = 0xff << 23;
+        result = 0xff << 23;
     } else if (x < -126) { // denorm
-      if (x < -149) { // too small
-        result = 0;
-      } else {
-        result = 0x1 << (x + 149);
-      }
+        if (x < -149) {    // too small
+            result = 0;
+        } else {
+            result = 0x1 << (x + 149);
+        }
     } else { // norm
-      result = (x + 127) << 23;
+        result = (x + 127) << 23;
     }
     return result;
 }
