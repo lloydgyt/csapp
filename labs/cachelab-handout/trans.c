@@ -1,4 +1,4 @@
-/* 
+/*
  * trans.c - Matrix transpose B = A^T
  *
  * Each transpose function must have a prototype of the form:
@@ -6,23 +6,23 @@
  *
  * A transpose function is evaluated by counting the number of misses
  * on a 1KB direct mapped cache with a block size of 32 bytes.
- */ 
-#include <stdio.h>
+ */
 #include "cachelab.h"
 #include <assert.h>
 #include <stdbool.h>
+#include <stdio.h>
 
-void print_matrix(const char* name, int rows, int cols, int matrix[][32]);
+void print_matrix(const char *name, int rows, int cols, int matrix[][32]);
 int is_transpose(int M, int N, int A[N][M], int B[M][N]);
 void transpose_lazy_32_32(int M, int N, int A[N][M], int B[M][N]);
 void transpose_lazy_64(int M, int N, int A[N][M], int B[M][N]);
 
-/* 
+/*
  * transpose_submit - This is the solution transpose function that you
  *     will be graded on for Part B of the assignment. Do not change
  *     the description string "Transpose submission", as the driver
  *     searches for that string to identify the transpose function to
- *     be graded. 
+ *     be graded.
  */
 
 char transpose_submit_desc[] = "Transpose submission";
@@ -35,12 +35,11 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N]) {
     if (M == 64 && N == 64) {
         transpose_lazy_64(M, N, A, B);
     }
-
 }
 
-char transpose_4_4_local_desc[] = "use 4 by 4 and local variable - read 4 elem in a line at a time";
-void transpose_4_4_local(int M, int N, int A[N][M], int B[M][N])
-{
+char transpose_4_4_local_desc[] =
+    "use 4 by 4 and local variable - read 4 elem in a line at a time";
+void transpose_4_4_local(int M, int N, int A[N][M], int B[M][N]) {
     int i, j, ii, jj, a, b, c, d;
 
     for (i = 0; i < N; i += 4) {
@@ -80,16 +79,15 @@ void transpose_4_4_local(int M, int N, int A[N][M], int B[M][N])
                 }
             }
         }
-    }    
-    // TODO handle non-even case
-
+    }
 }
 
-/* 
+/*
  * You can define additional transpose functions below. We've defined
- * a simple one below to help you get started. 
- */ 
-char trans_local_desc[] = "using local variable to read elems in a 2 by 2 block";
+ * a simple one below to help you get started.
+ */
+char trans_local_desc[] =
+    "using local variable to read elems in a 2 by 2 block";
 void trans_local(int M, int N, int A[N][M], int B[M][N]) {
     int i, j, ii, jj, cnt, a, b, c, d, stride = 2;
 
@@ -136,7 +134,7 @@ void trans_local(int M, int N, int A[N][M], int B[M][N]) {
                 }
             }
         }
-    }    
+    }
 }
 
 char trans_ap_desc[] = "different access pattern using triangle";
@@ -149,22 +147,21 @@ void trans_ap_tri(int M, int N, int A[N][M], int B[M][N]) {
             tmp = A[i][j];
             B[j][i] = tmp;
         }
-    }    
+    }
 
     for (i = N - 1; i >= 0; i--) {
         for (j = M - 1; j > i; j--) {
             tmp = A[i][j];
             B[j][i] = tmp;
         }
-    }    
+    }
 }
 
-/* 
+/*
  * trans - A simple baseline transpose function, not optimized for the cache.
  */
 char trans_desc[] = "Simple row-wise scan transpose";
-void trans(int M, int N, int A[N][M], int B[M][N])
-{
+void trans(int M, int N, int A[N][M], int B[M][N]) {
     int i, j, tmp;
 
     for (i = 0; i < N; i++) {
@@ -172,13 +169,11 @@ void trans(int M, int N, int A[N][M], int B[M][N])
             tmp = A[i][j];
             B[j][i] = tmp;
         }
-    }    
-
+    }
 }
 
 char transpose_8_8_desc[] = "using 8 by 8 blocking";
-void transpose_8_8(int M, int N, int A[N][M], int B[M][N])
-{
+void transpose_8_8(int M, int N, int A[N][M], int B[M][N]) {
     int i, j, ii, jj;
 
     for (i = 0; i < N; i += 8) {
@@ -189,12 +184,10 @@ void transpose_8_8(int M, int N, int A[N][M], int B[M][N])
                 }
             }
         }
-    }    
-
+    }
 }
 char transpose_4_4_desc[] = "using 4 by 4 blocking";
-void transpose_4_4(int M, int N, int A[N][M], int B[M][N])
-{
+void transpose_4_4(int M, int N, int A[N][M], int B[M][N]) {
     int i, j, ii, jj;
 
     for (i = 0; i < N; i += 4) {
@@ -205,9 +198,7 @@ void transpose_4_4(int M, int N, int A[N][M], int B[M][N])
                 }
             }
         }
-    }    
-    // TODO handle non-even case
-
+    }
 }
 
 char transpose_lazy_64_desc[] = "using lazy technique to get 1300 misses";
@@ -215,19 +206,16 @@ void transpose_lazy_64(int M, int N, int A[N][M], int B[M][N]) {
     int i, j, ii, jj, a, b, c, d, counter;
 
     // inside 8 by 8 block
-    for (i = 0; i < N; i += 8) {
-        for (j = 0; j < M; j += 8) {
-            // TODO assume there is an intermediate counter!
+    for (i = 0; i < N - 7; i += 8) {
+        for (j = 0; j < M - 7; j += 8) {
             // inside 4 by 4 block
-            for (ii = 0; ii < 4; ii++) { 
+            for (ii = 0; ii < 4; ii++) {
                 for (jj = 0; jj < 4; jj++) {
                     B[j + 0 + jj][i + 0 + ii] = A[i + 0 + ii][j + 0 + jj];
                     B[j + 0 + jj][i + 4 + ii] = A[i + 0 + ii][j + 4 + jj];
                 }
-                // TODO how to assert?
             }
-            
-            // TODO do this 4 times
+
             for (counter = 0; counter < 4; counter++) {
                 // 1. store in local vars
                 a = B[j + 0 + counter][i + 4 + 0];
@@ -251,60 +239,57 @@ void transpose_lazy_64(int M, int N, int A[N][M], int B[M][N]) {
                 }
             }
         }
-    }    
-
+    }
 }
 
 char transpose_lazy_32_32_desc[] = "using lazy technique to get 256 misses";
-void transpose_lazy_32_32(int M, int N, int A[N][M], int B[M][N])
-{
-        int i, j, ii, jj, stride;
-        stride = 8; // 8 by 8 blocking
-        for (i = 8; i < N; i += stride) {
-            // process main diagonal first, without (0, 0) blocks
-            j = i;
-            // use (1, 0) block as temp-block
-            for (ii = 0; ii < stride; ii++) { // use local indexing
-                for (jj = 0; jj < stride; jj++) {
-                    B[stride + ii][jj] = A[i + ii][j + jj];
-                }
-            }
-            for (ii = 0; ii < stride; ii++) {
-                for (jj = 0; jj < stride; jj++) {
-                    B[i + jj][j + ii] = B[stride + ii][jj];
-                }
+void transpose_lazy_32_32(int M, int N, int A[N][M], int B[M][N]) {
+    int i, j, ii, jj, stride;
+    stride = 8; // 8 by 8 blocking
+    for (i = 8; i < N; i += stride) {
+        // process main diagonal first, without (0, 0) blocks
+        j = i;
+        // use (1, 0) block as temp-block
+        for (ii = 0; ii < stride; ii++) { // use local indexing
+            for (jj = 0; jj < stride; jj++) {
+                B[stride + ii][jj] = A[i + ii][j + jj];
             }
         }
-        // TODO move (0,1) block to (1, 0) block 
         for (ii = 0; ii < stride; ii++) {
             for (jj = 0; jj < stride; jj++) {
-                B[stride + jj][ii] = A[ii][stride + jj];
+                B[i + jj][j + ii] = B[stride + ii][jj];
             }
         }
-        // move (0, 0) to (0, 1)
-        for (ii = 0; ii < stride; ii++) {
-            for (jj = 0; jj < stride; jj++) {
-                B[ii][stride + jj] = A[ii][jj];
-            }
+    }
+    // move (0,1) block to (1, 0) block
+    for (ii = 0; ii < stride; ii++) {
+        for (jj = 0; jj < stride; jj++) {
+            B[stride + jj][ii] = A[ii][stride + jj];
         }
-        // print_matrix("B", 32, 32, B); // TODO delete later with declaration
-        // move (0, 1) to (0, 0)
-        for (ii = 0; ii < stride; ii++) {
-            for (jj = 0; jj < stride; jj++) {
-                B[ii][jj] = B[jj][stride + ii];
-            }
+    }
+    // move (0, 0) to (0, 1)
+    for (ii = 0; ii < stride; ii++) {
+        for (jj = 0; jj < stride; jj++) {
+            B[ii][stride + jj] = A[ii][jj];
         }
-        // print_matrix("B", 32, 32, B); // TODO delete later with declaration
-        for (j = 0; j < M; j += stride) {
-            for (i = 0; i < N; i += stride) { // this is global indexing
-                if (i == j || (i == 1 && j == 0)) continue;
-                for (ii = i; ii < i + stride; ii++) {
-                    for (jj = j; jj < j + stride; jj++) {
-                        B[jj][ii] = A[ii][jj];
-                    }
+    }
+    // move (0, 1) to (0, 0)
+    for (ii = 0; ii < stride; ii++) {
+        for (jj = 0; jj < stride; jj++) {
+            B[ii][jj] = B[jj][stride + ii];
+        }
+    }
+    for (j = 0; j < M; j += stride) {
+        for (i = 0; i < N; i += stride) { // this is global indexing
+            if (i == j || (i == 1 && j == 0))
+                continue;
+            for (ii = i; ii < i + stride; ii++) {
+                for (jj = j; jj < j + stride; jj++) {
+                    B[jj][ii] = A[ii][jj];
                 }
             }
-        }    
+        }
+    }
 }
 
 /*
@@ -314,15 +299,14 @@ void transpose_lazy_32_32(int M, int N, int A[N][M], int B[M][N])
  *     performance. This is a handy way to experiment with different
  *     transpose strategies.
  */
-void registerFunctions()
-{
+void registerFunctions() {
     /* Register your solution function */
-    registerTransFunction(transpose_submit, transpose_submit_desc); 
+    registerTransFunction(transpose_submit, transpose_submit_desc);
 
-    registerTransFunction(transpose_lazy_32_32, transpose_lazy_32_32_desc); 
+    registerTransFunction(transpose_lazy_32_32, transpose_lazy_32_32_desc);
 
     /* Register any additional transpose functions */
-    // registerTransFunction(trans, trans_desc); 
+    // registerTransFunction(trans, trans_desc);
 
     // registerTransFunction(trans_local, trans_local_desc);
 
@@ -335,13 +319,12 @@ void registerFunctions()
     // registerTransFunction(transpose_4_4_local, transpose_4_4_local_desc);
 }
 
-/* 
+/*
  * is_transpose - This helper function checks if B is the transpose of
  *     A. You can check the correctness of your transpose by calling
  *     it before returning from the transpose function.
  */
-int is_transpose(int M, int N, int A[N][M], int B[M][N])
-{
+int is_transpose(int M, int N, int A[N][M], int B[M][N]) {
     int i, j;
 
     for (i = 0; i < N; i++) {
@@ -353,4 +336,3 @@ int is_transpose(int M, int N, int A[N][M], int B[M][N])
     }
     return 1;
 }
-

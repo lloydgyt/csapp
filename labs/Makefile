@@ -1,4 +1,4 @@
-lab = archlab-handout
+lab = archlab-handout shlab-handout
 $(lab): % : %.tar
 	rm -f $<:Zone.Identifier
 	tar xvf $<
