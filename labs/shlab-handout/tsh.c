@@ -51,8 +51,8 @@ struct job_t {             /* The job struct */
     int state;             /* UNDEF, BG, FG, or ST */
     char cmdline[MAXLINE]; /* command line */
 };
-struct job_t jobs[MAXJOBS];           /* The job list */
-static volatile sig_atomic_t pid = 0; // TODO pid_t?
+struct job_t jobs[MAXJOBS]; /* The job list */
+static volatile sig_atomic_t pid = 0;
 /* End global variables */
 
 /* Function prototypes */
@@ -178,7 +178,6 @@ void eval(char *cmdline) {
     // TODO number of argv?
     int num_args = 10;
     char **argv = (char **)malloc(num_args * sizeof(*argv));
-    // TODO change this pid as global!
     // 1. parse the line to get part
     // assume parseline cut any extra space
     bg = parseline(cmdline, argv);
@@ -283,7 +282,6 @@ int builtin_cmd(char **argv) {
         do_bgfg(argv);
         return 1;
     }
-    // TODO for other built-in command, do sth. and return 1
     return 0; /* not a builtin command */
 }
 
@@ -326,22 +324,13 @@ void do_bgfg(char **argv) {
     stopped_pid = stopped_job->pid;
 
     // then it runs in the bg/fg
+    // TODO send CONT to a group or singal process
+    Kill(-stopped_pid, SIGCONT);
+    stopped_job->state = bg ? BG : FG;
     if (bg) {
-        // make sure this job is in STOPED state!
-        assert(stopped_job->state == ST);
-        // TODO send CONT to a group or singal process?
-        Kill(-stopped_pid, SIGCONT);
-        stopped_job->state = BG;
+        printf("[%d] (%d) %s\n", stopped_job->jid, stopped_job->pid,
+               stopped_job->cmdline);
     } else {
-        // make sure this job is in STOPED state!
-        if (stopped_job->state == ST) {
-            // TODO send CONT to a group or singal process?
-            Kill(-stopped_pid, SIGCONT);
-        } else {
-            // TODO can you send SIGCONT to a job that is already running?
-            assert(stopped_job->state == BG);
-        }
-        stopped_job->state = FG;
         waitfg(stopped_pid);
     }
     return;
