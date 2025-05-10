@@ -199,13 +199,14 @@ void eval(char *cmdline) {
         if (bg) {
             /* background */
             addjob(jobs, pid, BG, cmdline);
+            // TODO unblock SIGCHLD here!
             // print a line of message
             struct job_t *jobp = getjobpid(jobs, pid);
             printf("[%d] (%d) %s\n", jobp->jid, jobp->pid, jobp->cmdline);
-            // TODO consider SINCHLD, use it to reap child!
         } else {
             /* fg */
             addjob(jobs, pid, FG, cmdline);
+            // TODO unblock SIGCHLD here!
             waitfg(pid); // handle fgjob exited, terminated or stopped
         }
     }
@@ -347,7 +348,6 @@ void waitfg(pid_t pid) {
     // }
     int fg_jid = pid2jid(pid);
     int status;
-    // TODO later change these in SIGCHLD handler
     Waitpid(pid, &status, WUNTRACED);
     // check status
     // TODO do I need to detect Continue?
@@ -393,8 +393,10 @@ void sigchld_handler(int sig) {
  */
 void sigint_handler(int sig) {
     pid_t foreground_pid = fgpid(jobs);
+    if (foreground_pid) {
+        Kill(-foreground_pid, SIGINT);
+    }
     // send SIGINT to that group, don't handle cleanup!
-    Kill(-foreground_pid, SIGINT);
     return;
 }
 
@@ -405,8 +407,10 @@ void sigint_handler(int sig) {
  */
 void sigtstp_handler(int sig) {
     pid_t foreground_pid = fgpid(jobs);
+    if (foreground_pid) {
+        Kill(-foreground_pid, SIGTSTP);
+    }
     // send SIGINT to that group, don't handle cleanup!
-    Kill(-foreground_pid, SIGTSTP);
     return;
 }
 
