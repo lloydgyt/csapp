@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
+#include <limits.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -206,8 +207,7 @@ void eval(char *cmdline) {
         } else {
             /* fg */
             addjob(jobs, pid, FG, cmdline);
-            waitfg(pid);
-            deletejob(jobs, pid); // TODO should this be done by handler? yes
+            waitfg(pid); // handle fgjob exited, terminated or stopped
         }
     }
     // built-in command reaches here.
@@ -279,8 +279,10 @@ int builtin_cmd(char **argv) {
     } else if (strcmp(cmd, "jobs") == 0) {
         listjobs(jobs);
         return 1;
+    } else if (strcmp(cmd, "bg") == 0 || strcmp(cmd, "fg") == 0) {
+        do_bgfg(argv);
+        return 1;
     }
-
     // TODO for other built-in command, do sth. and return 1
     return 0; /* not a builtin command */
 }
@@ -288,7 +290,62 @@ int builtin_cmd(char **argv) {
 /*
  * do_bgfg - Execute the builtin bg and fg commands
  */
-void do_bgfg(char **argv) { return; }
+void do_bgfg(char **argv) {
+    char *cmd = argv[0];
+    char *id = argv[1];
+    bool bg = (strcmp(cmd, "bg") == 0);
+    if (!id) {
+        printf("%s command requires PID or %%jobid argument\n", cmd);
+        return;
+    }
+    // handle 2 types of ID to get the JID
+    pid_t stopped_pid;
+    int stopped_jid;
+    struct job_t *stopped_job;
+
+    bool is_jid = (*id == '%') ? true : false;
+    if (is_jid) {
+        id += 1;
+    }
+    char *end;
+    long num = strtol(id, &end, 10);
+    if (*end != '\0' || num < 0 || num > INT_MAX) {
+        printf("%s: argument must be a PID or %%jobid\n", cmd);
+        return;
+    }
+    stopped_jid = is_jid ? (int)num : pid2jid((int)num);
+    stopped_job = getjobjid(jobs, stopped_jid);
+    if (!stopped_job) {
+        if (is_jid) {
+            printf("%%%d: No such job\n", stopped_jid);
+        } else {
+            printf("(%d): No such process\n", (int)num);
+        }
+        return;
+    }
+    stopped_pid = stopped_job->pid;
+
+    // then it runs in the bg/fg
+    if (bg) {
+        // make sure this job is in STOPED state!
+        assert(stopped_job->state == ST);
+        // TODO send CONT to a group or singal process?
+        Kill(-stopped_pid, SIGCONT);
+        stopped_job->state = BG;
+    } else {
+        // make sure this job is in STOPED state!
+        if (stopped_job->state == ST) {
+            // TODO send CONT to a group or singal process?
+            Kill(-stopped_pid, SIGCONT);
+        } else {
+            // TODO can you send SIGCONT to a job that is already running?
+            assert(stopped_job->state == BG);
+        }
+        stopped_job->state = FG;
+        waitfg(stopped_pid);
+    }
+    return;
+}
 
 /*
  * waitfg - Block until process pid is no longer the foreground process
@@ -299,12 +356,25 @@ void waitfg(pid_t pid) {
     //     // TODO only when pid is the foreground job! will it break loop
     //     sleep(1);
     // }
-    int status; // TODO do I need to initialize? status should be a int!
-    Waitpid(pid, &status, 0);
+    int fg_jid = pid2jid(pid);
+    int status;
+    // TODO later change these in SIGCHLD handler
+    Waitpid(pid, &status, WUNTRACED);
     // check status
-    if (WIFSIGNALED(status)) {
-        printf("Job [%d] (%d) terminated by signal %d\n", pid2jid(pid), pid,
+    // TODO do I need to detect Continue?
+    if (WIFEXITED(status)) {
+        // TODO need to check status?
+        deletejob(jobs, pid);
+    } else if (WIFSIGNALED(status)) {
+        printf("Job [%d] (%d) terminated by signal %d\n", fg_jid, pid,
                WTERMSIG(status));
+        deletejob(jobs, pid);
+    } else if (WIFSTOPPED(status)) {
+        printf("Job [%d] (%d) stopped by signal %d\n", fg_jid, pid,
+               WSTOPSIG(status));
+        struct job_t *stopped_job = getjobpid(jobs, pid);
+        assert(stopped_job->state == FG);
+        stopped_job->state = ST;
     }
     return;
 }
@@ -333,10 +403,9 @@ void sigchld_handler(int sig) {
  *    to the foreground job.
  */
 void sigint_handler(int sig) {
-    // TODO kill fg job, instead of tsh itself
     pid_t foreground_pid = fgpid(jobs);
-    Kill(-foreground_pid, SIGINT);
     // send SIGINT to that group, don't handle cleanup!
+    Kill(-foreground_pid, SIGINT);
     return;
 }
 
@@ -345,7 +414,12 @@ void sigint_handler(int sig) {
  *     the user types ctrl-z at the keyboard. Catch it and suspend the
  *     foreground job by sending it a SIGTSTP.
  */
-void sigtstp_handler(int sig) { return; }
+void sigtstp_handler(int sig) {
+    pid_t foreground_pid = fgpid(jobs);
+    // send SIGINT to that group, don't handle cleanup!
+    Kill(-foreground_pid, SIGTSTP);
+    return;
+}
 
 /*********************
  * End signal handlers
@@ -567,7 +641,7 @@ pid_t Fork() {
 int Execve(const char *filename, char *const argv[], char *const envp[]) {
     int ret = execve(filename, argv, envp);
     if (ret < 0) {
-        perror("execve error");
+        printf("%s: Command not found\n", filename);
         exit(EXIT_FAILURE); // Typically won't reach here if execve succeeds
     }
     /* never reaches here */
