@@ -54,6 +54,7 @@ struct job_t {             /* The job struct */
 };
 struct job_t jobs[MAXJOBS]; /* The job list */
 static volatile sig_atomic_t fg_flag = 0;
+static sigset_t mask, previous_mask;
 /* End global variables */
 
 /* Function prototypes */
@@ -141,6 +142,8 @@ int main(int argc, char **argv) {
 
     /* Initialize the job list */
     initjobs(jobs);
+    /* Init signal mask */
+    Sigfillset(&mask); // TODO should I block all?
 
     /* Execute the shell's read/eval loop */
     while (1) {
@@ -193,8 +196,6 @@ void eval(char *cmdline) {
     }
     // 2. get first word as command and test if builtin
 
-    sigset_t mask, previous_mask;
-    Sigfillset(&mask); // TODO should I block all?
     Sigprocmask(SIG_SETMASK, &mask, &previous_mask);
     if (!builtin_cmd(argv)) {
         /* Not built-in*/
@@ -221,8 +222,6 @@ void eval(char *cmdline) {
         } else {
             /* fg */
             addjob(jobs, pid, FG, cmdline);
-            fg_flag = 0;
-            Sigprocmask(SIG_SETMASK, &previous_mask, NULL);
             waitfg(pid); // handle fgjob exited, terminated or stopped
         }
     }
@@ -359,12 +358,16 @@ void do_bgfg(char **argv) {
  * waitfg - Block until process pid is no longer the foreground process
  */
 void waitfg(pid_t pid) {
+    // make sure when at entry point, it's blocked
+    Sigprocmask(SIG_SETMASK, &previous_mask, NULL);
     while (!fg_flag) {
         sleep(1);
     }
     // when it reaches here, fg job is either terminated or stopped
     struct job_t *job = getjobpid(jobs, pid);
     assert((!job) || job->state == ST);
+    fg_flag = 0; // reset flag!
+    Sigprocmask(SIG_SETMASK, &mask, &previous_mask);
     return;
 }
 
@@ -384,7 +387,7 @@ void sigchld_handler(int sig) {
     pid_t child_pid;
     int status;
     // SIGCHLD is not queued! here, we should set up a loop!
-    while ((child_pid = waitpid(-1, &status, WUNTRACED)) > 0) {
+    while ((child_pid = waitpid(-1, &status, WUNTRACED | WNOHANG)) > 0) {
         int jid = pid2jid(child_pid);
         assert(jid);
         struct job_t *job = getjobpid(jobs, child_pid);
@@ -434,6 +437,7 @@ void sigtstp_handler(int sig) {
     int olderrno = errno;
     pid_t foreground_pid = fgpid(jobs);
     if (foreground_pid) {
+        printf("Catch TSTP\n");
         Kill(-foreground_pid, SIGTSTP);
     }
     // send SIGINT to that group, don't handle cleanup!
