@@ -93,6 +93,11 @@ pid_t Wait(int *status);
 pid_t Waitpid(pid_t pid, int *status, int options);
 int Kill(pid_t pid, int sig);
 int Setpgid(pid_t pid, pid_t pgid);
+void Sigemptyset(sigset_t *set);
+void Sigfillset(sigset_t *set);
+void Sigaddset(sigset_t *set, int signum);
+void Sigdelset(sigset_t *set, int signum);
+void Sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
 
 /*
  * main - The shell's main routine
@@ -125,6 +130,8 @@ int main(int argc, char **argv) {
 
     /* Install the signal handlers */
 
+    sigset_t mask, previous_mask;
+    Sigfillset(&mask);
     /* These are the ones you will need to implement */
     Signal(SIGINT, sigint_handler);   /* ctrl-c */
     Signal(SIGTSTP, sigtstp_handler); /* ctrl-z */
@@ -139,6 +146,7 @@ int main(int argc, char **argv) {
     /* Execute the shell's read/eval loop */
     while (1) {
 
+        /*Sigprocmask(SIG_SETMASK, &mask, &previous_mask);*/
         /* Read command line */
         if (emit_prompt) {
             printf("%s", prompt);
@@ -154,6 +162,7 @@ int main(int argc, char **argv) {
         }
 
         /* Evaluate the command line */
+        /*Sigprocmask(SIG_SETMASK, &previous_mask, NULL);*/
         eval(cmdline);
         fflush(stdout);
         fflush(stdout);
@@ -174,13 +183,16 @@ int main(int argc, char **argv) {
  * when we type ctrl-c (ctrl-z) at the keyboard.
  */
 void eval(char *cmdline) {
-    bool bg;
+    int bg;
     // TODO number of argv?
     int num_args = 10;
     char **argv = (char **)malloc(num_args * sizeof(*argv));
     // 1. parse the line to get part
     // assume parseline cut any extra space
     bg = parseline(cmdline, argv);
+    if (bg == -1) {
+        return; /* ignore blank line */
+    }
     // 2. get first word as command and test if builtin
     if (!builtin_cmd(argv)) {
         /* Not built-in*/
@@ -259,7 +271,7 @@ int parseline(const char *cmdline, char **argv) {
     argv[argc] = NULL;
 
     if (argc == 0) /* ignore blank line */
-        return 1;
+        return -1;
 
     /* should the job run in the background? */
     if ((bg = (*argv[argc - 1] == '&')) != 0) {
@@ -274,6 +286,7 @@ int parseline(const char *cmdline, char **argv) {
  */
 int builtin_cmd(char **argv) {
     char *cmd = argv[0];
+    assert(cmd);
     if (strcmp(cmd, "quit") == 0) {
         exit(0);
     } else if (strcmp(cmd, "jobs") == 0) {
@@ -392,11 +405,13 @@ void sigchld_handler(int sig) {
  *    to the foreground job.
  */
 void sigint_handler(int sig) {
+    int olderrno = errno;
     pid_t foreground_pid = fgpid(jobs);
     if (foreground_pid) {
         Kill(-foreground_pid, SIGINT);
     }
     // send SIGINT to that group, don't handle cleanup!
+    errno = olderrno;
     return;
 }
 
@@ -406,11 +421,13 @@ void sigint_handler(int sig) {
  *     foreground job by sending it a SIGTSTP.
  */
 void sigtstp_handler(int sig) {
+    int olderrno = errno;
     pid_t foreground_pid = fgpid(jobs);
     if (foreground_pid) {
         Kill(-foreground_pid, SIGTSTP);
     }
     // send SIGINT to that group, don't handle cleanup!
+    errno = olderrno;
     return;
 }
 
@@ -684,4 +701,38 @@ int Setpgid(pid_t pid, pid_t pgid) {
         exit(EXIT_FAILURE);
     }
     return 0;
+}
+void Sigemptyset(sigset_t *set) {
+    if (sigemptyset(set) == -1) {
+        perror("sigemptyset error");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void Sigfillset(sigset_t *set) {
+    if (sigfillset(set) == -1) {
+        perror("sigfillset error");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void Sigaddset(sigset_t *set, int signum) {
+    if (sigaddset(set, signum) == -1) {
+        perror("sigaddset error");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void Sigdelset(sigset_t *set, int signum) {
+    if (sigdelset(set, signum) == -1) {
+        perror("sigdelset error");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void Sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
+    if (sigprocmask(how, set, oldset) == -1) {
+        perror("sigprocmask error");
+        exit(EXIT_FAILURE);
+    }
 }
