@@ -4,6 +4,7 @@
  * <Put your name and login ID here>
  */
 #include <assert.h>
+#include <bits/types/sigset_t.h>
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
@@ -52,7 +53,7 @@ struct job_t {             /* The job struct */
     char cmdline[MAXLINE]; /* command line */
 };
 struct job_t jobs[MAXJOBS]; /* The job list */
-static volatile sig_atomic_t pid = 0;
+static volatile sig_atomic_t fg_flag = 0;
 /* End global variables */
 
 /* Function prototypes */
@@ -130,8 +131,6 @@ int main(int argc, char **argv) {
 
     /* Install the signal handlers */
 
-    sigset_t mask, previous_mask;
-    Sigfillset(&mask);
     /* These are the ones you will need to implement */
     Signal(SIGINT, sigint_handler);   /* ctrl-c */
     Signal(SIGTSTP, sigtstp_handler); /* ctrl-z */
@@ -146,7 +145,6 @@ int main(int argc, char **argv) {
     /* Execute the shell's read/eval loop */
     while (1) {
 
-        /*Sigprocmask(SIG_SETMASK, &mask, &previous_mask);*/
         /* Read command line */
         if (emit_prompt) {
             printf("%s", prompt);
@@ -162,7 +160,6 @@ int main(int argc, char **argv) {
         }
 
         /* Evaluate the command line */
-        /*Sigprocmask(SIG_SETMASK, &previous_mask, NULL);*/
         eval(cmdline);
         fflush(stdout);
         fflush(stdout);
@@ -184,9 +181,10 @@ int main(int argc, char **argv) {
  */
 void eval(char *cmdline) {
     int bg;
-    // TODO number of argv?
+    // TODO number of argv? this might cause a problem
     int num_args = 10;
     char **argv = (char **)malloc(num_args * sizeof(*argv));
+    pid_t pid;
     // 1. parse the line to get part
     // assume parseline cut any extra space
     bg = parseline(cmdline, argv);
@@ -194,6 +192,10 @@ void eval(char *cmdline) {
         return; /* ignore blank line */
     }
     // 2. get first word as command and test if builtin
+
+    sigset_t mask, previous_mask;
+    Sigfillset(&mask); // TODO should I block all?
+    Sigprocmask(SIG_SETMASK, &mask, &previous_mask);
     if (!builtin_cmd(argv)) {
         /* Not built-in*/
         // printf("cmd: %s\n", argv[0]);
@@ -202,6 +204,7 @@ void eval(char *cmdline) {
         if ((pid = Fork()) == 0) {
             /* CHILD */
             // set pgid here, to separate the child from tsh!
+            Sigprocmask(SIG_SETMASK, &previous_mask, NULL);
             Setpgid(0, 0);
             // TODO do I need to add env?
             Execve(argv[0], argv, NULL);
@@ -218,11 +221,12 @@ void eval(char *cmdline) {
         } else {
             /* fg */
             addjob(jobs, pid, FG, cmdline);
-            // TODO unblock SIGCHLD here!
+            fg_flag = 0;
+            Sigprocmask(SIG_SETMASK, &previous_mask, NULL);
             waitfg(pid); // handle fgjob exited, terminated or stopped
         }
     }
-    // built-in command reaches here.
+    Sigprocmask(SIG_SETMASK, &previous_mask, NULL);
     return;
 }
 
@@ -290,6 +294,7 @@ int builtin_cmd(char **argv) {
     if (strcmp(cmd, "quit") == 0) {
         exit(0);
     } else if (strcmp(cmd, "jobs") == 0) {
+        // TODO should I protect this??
         listjobs(jobs);
         return 1;
     } else if (strcmp(cmd, "bg") == 0 || strcmp(cmd, "fg") == 0) {
@@ -354,30 +359,12 @@ void do_bgfg(char **argv) {
  * waitfg - Block until process pid is no longer the foreground process
  */
 void waitfg(pid_t pid) {
-    // set pid = 0! but need to consider signal!
-    // while (true) {
-    //     // TODO only when pid is the foreground job! will it break loop
-    //     sleep(1);
-    // }
-    int fg_jid = pid2jid(pid);
-    int status;
-    Waitpid(pid, &status, WUNTRACED);
-    // check status
-    // TODO do I need to detect Continue?
-    if (WIFEXITED(status)) {
-        // TODO need to check status?
-        deletejob(jobs, pid);
-    } else if (WIFSIGNALED(status)) {
-        printf("Job [%d] (%d) terminated by signal %d\n", fg_jid, pid,
-               WTERMSIG(status));
-        deletejob(jobs, pid);
-    } else if (WIFSTOPPED(status)) {
-        printf("Job [%d] (%d) stopped by signal %d\n", fg_jid, pid,
-               WSTOPSIG(status));
-        struct job_t *stopped_job = getjobpid(jobs, pid);
-        assert(stopped_job->state == FG);
-        stopped_job->state = ST;
+    while (!fg_flag) {
+        sleep(1);
     }
+    // when it reaches here, fg job is either terminated or stopped
+    struct job_t *job = getjobpid(jobs, pid);
+    assert((!job) || job->state == ST);
     return;
 }
 
@@ -393,9 +380,32 @@ void waitfg(pid_t pid) {
  *     currently running children to terminate.
  */
 void sigchld_handler(int sig) {
-    // save errno
-    // set flag pid
-    // replace errno
+    int old_errno = errno;
+    pid_t child_pid;
+    int status;
+    // SIGCHLD is not queued! here, we should set up a loop!
+    while ((child_pid = waitpid(-1, &status, WUNTRACED)) > 0) {
+        int jid = pid2jid(child_pid);
+        assert(jid);
+        struct job_t *job = getjobpid(jobs, child_pid);
+        // check for fg first! then set flag
+        if (job->state == FG) {
+            fg_flag = 1;
+        }
+        // check status
+        if (WIFEXITED(status)) {
+            deletejob(jobs, child_pid);
+        } else if (WIFSIGNALED(status)) {
+            printf("Job [%d] (%d) terminated by signal %d\n", jid, child_pid,
+                   WTERMSIG(status));
+            deletejob(jobs, child_pid);
+        } else if (WIFSTOPPED(status)) {
+            printf("Job [%d] (%d) stopped by signal %d\n", jid, child_pid,
+                   WSTOPSIG(status));
+            job->state = ST;
+        }
+    }
+    errno = old_errno;
     return;
 }
 
@@ -667,6 +677,7 @@ pid_t Wait(int *statusp) {
     return pid;
 }
 
+// TODO don't use this!
 pid_t Waitpid(pid_t pid, int *status, int options) {
     pid_t ret = waitpid(pid, status, options);
     if (ret < 0) {
