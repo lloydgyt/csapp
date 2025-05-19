@@ -97,4 +97,5 @@ rtest16:
 clean:
 	rm -f $(FILES) *.o *~
 
-
+kill:
+	ps aux | grep " \./tsh$$" | awk '{print $$2}' | xargs kill -9
