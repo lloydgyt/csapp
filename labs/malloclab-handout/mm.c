@@ -37,9 +37,9 @@ team_t team = {
 
 /* single word (4) or double word (8) alignment */
 #define ALIGNMENT 8
-#define INIT_HEAP (ALIGNMENT * (1 << 10))
+#define INIT_HEAP (ALIGNMENT * (1 << 10)) // TODO should be bigger!
 #define INCR (1 << 10)
-#define ROUND_UP(size) (((size) + INCR - 1) & ~0x3ff)
+#define ROUND_UP(size) (((size) + (INCR) - 1) & ~((INCR) - 1))
 
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
