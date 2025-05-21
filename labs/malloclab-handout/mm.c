@@ -37,8 +37,9 @@ team_t team = {
 
 /* single word (4) or double word (8) alignment */
 #define ALIGNMENT 8
-#define INIT_HEAP (ALIGNMENT * (1 << 12))
-#define INCR (ALIGNMENT * (1 << 10)) // make sure last (header + 1) is aligned
+#define INIT_HEAP (ALIGNMENT * (1 << 10))
+#define INCR (1 << 10)
+#define ROUND_UP(size) (((size) + INCR - 1) & ~0x3ff)
 
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
@@ -66,6 +67,7 @@ static char *heap_high;   // points to the last byte in heap
 void split(size_t *header, size_t newsize);
 void extract_node(size_t *header);
 void head_insert(size_t *header);
+size_t *expand(size_t request_size);
 
 /*
  * mm_init - initialize the malloc package.
@@ -111,9 +113,12 @@ void *mm_malloc(size_t size) {
         // update
         header = (size_t *)NEXT_HEADER(header);
     }
-    assert(!IS_LAST(header));
-    // TODO add expanding heap logic
-    // should update heap DS!
+    // can't find block, expand heap
+    if (IS_LAST(header)) {
+        header = expand(newsize);
+    }
+
+    assert(IS_FREE(header) && (newsize <= GET_SIZE(header)));
     extract_node(header);
     *header |= 0x1; // mark as used
     split(header, newsize);
@@ -233,4 +238,39 @@ void head_insert(size_t *header) {
     PREV_HEADER(header) = 0;
     NEXT_HEADER(header) = (size_t)list_root;
     list_root = header;
+}
+
+/* expand the heap and return a pointer that is ready to use */
+size_t *expand(size_t request_size) {
+    size_t allocate_size = ROUND_UP(request_size);
+    void *p = mem_sbrk(allocate_size);
+    assert(p != (void *)-1);
+    heap_high = (char *)mem_heap_hi();
+
+    // set block metadata (except pointers)
+    size_t *header = (size_t *)p;
+    size_t *footer = (size_t *)(heap_high - ALIGNMENT + 1);
+    size_t newsize = allocate_size - 2 * ALIGNMENT;
+    *header = newsize;
+    assert(IS_FREE(header));
+    memmove(footer, header, ALIGNMENT);
+
+    // maybe merge left
+    // TODO may wrap this (footer needs to be set before!)
+    size_t *left_footer = (size_t *)((char *)header - SIZE_T_SIZE);
+    if (!IS_LOW(header) && IS_FREE(left_footer)) {
+        // set header
+        size_t *left_header = GET_HEADER_FROM_FOOTER(left_footer);
+        assert(IS_FREE(left_header));
+        header = left_header;
+        *header = GET_SIZE(left_header) + newsize + 2 * SIZE_T_SIZE;
+        memmove(footer, header, ALIGNMENT);
+        // the node stays the same!
+    } else {
+        assert(IS_LOW(header) || IS_ALLOC(left_footer));
+        head_insert(header);
+    }
+    // set free
+    *header &= ~0x1;
+    return header;
 }
