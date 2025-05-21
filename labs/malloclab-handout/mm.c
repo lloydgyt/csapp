@@ -37,8 +37,8 @@ team_t team = {
 
 /* single word (4) or double word (8) alignment */
 #define ALIGNMENT 8
-#define INIT_HEAP (ALIGNMENT * 1024)
-#define INCR (ALIGNMENT * 1024) // make sure last (header + 1) is aligned
+#define INIT_HEAP (ALIGNMENT * (1 << 12))
+#define INCR (ALIGNMENT * (1 << 10)) // make sure last (header + 1) is aligned
 
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
@@ -51,8 +51,21 @@ team_t team = {
 #define PREV_HEADER(header) ((header)[2])
 #define NEXT_HEADER(header) ((header)[3])
 #define GET_SIZE(header) (*(header) & ~0x7)
+#define GET_FOOTER_FROM_HEADER(header)                                         \
+    ((size_t *)((char *)(header) + (GET_SIZE(header)) + (SIZE_T_SIZE)))
+#define GET_HEADER_FROM_FOOTER(footer)                                         \
+    ((size_t *)((char *)(footer) - (GET_SIZE(footer)) - (SIZE_T_SIZE)))
+#define IS_LOW(header) ((char *)(header) == heap_low)
+#define IS_HIGH(header) ((char *)(header) == (heap_high - (ALIGNMENT) + 1))
 
 static size_t *list_root; // points to the first header!
+static char *heap_low;    // points to the first byte in heap
+static char *heap_high;   // points to the last byte in heap
+
+/* prototype */
+void split(size_t *header, size_t newsize);
+void extract_node(size_t *header);
+void head_insert(size_t *header);
 
 /*
  * mm_init - initialize the malloc package.
@@ -60,11 +73,13 @@ static size_t *list_root; // points to the first header!
 int mm_init(void) {
     void *p = mem_sbrk(INIT_HEAP);
     assert(p != (void *)-1);
+    heap_low = (char *)p;
+    heap_high = (char *)mem_heap_hi();
     size_t *first_header = (size_t *)p;
-    size_t *last_header = (size_t *)((char *)mem_heap_hi() - ALIGNMENT + 1);
+    size_t *last_header = (size_t *)(heap_high - ALIGNMENT + 1);
     *last_header = 1;
     assert(IS_ALLOC(last_header));
-    assert(IS_ALIGN(last_header + 1));
+    assert(IS_ALIGN((char *)last_header + SIZE_T_SIZE));
 
     *first_header = INIT_HEAP - 3 * ALIGNMENT;
     assert(IS_FREE(first_header));
@@ -81,31 +96,27 @@ int mm_init(void) {
  *     Always allocate a block whose size is a multiple of the alignment.
  */
 void *mm_malloc(size_t size) {
-    // TODO consider sbrk later
+    // static size_t counter = 0;
+    // printf("\n");
+    // printf("malloc times = %u\n", counter++);
     int newsize = ALIGN(size);
     // loop to check all free list
     size_t *header = list_root;
     // find appropriate block
     while (!IS_LAST(header)) {
+        // printf("times = %u, request_size = %u, current_size = %u\n", counter,
+        //        newsize, GET_SIZE(header));
         if (newsize <= GET_SIZE(header)) {
             break;
         }
         // update
-        header = NEXT_HEADER(header);
+        header = (size_t *)NEXT_HEADER(header);
     }
     assert(!IS_LAST(header));
-    // handle list invariant
-    size_t *previous_header = PREV_HEADER(header);
-    size_t *next_header = NEXT_HEADER(header);
-    if (previous_header == 0) {
-        list_root = next_header;
-    } else {
-        NEXT_HEADER(previous_header) = next_header;
-    }
-    if (!IS_LAST(next_header)) {
-        PREV_HEADER(next_header) = previous_header;
-    } // TODO this is so ugly!
-
+    // TODO add expanding heap logic
+    // should update heap DS!
+    extract_node(header);
+    *header |= 0x1; // mark as used
     split(header, newsize);
     assert(IS_ALLOC(header));
     assert(IS_ALIGN((void *)((char *)header + SIZE_T_SIZE)));
@@ -116,16 +127,50 @@ void *mm_malloc(size_t size) {
  * mm_free - Freeing a block does nothing.
  */
 void mm_free(void *ptr) {
+    // static size_t counter = 0;
+    // printf("\n");
+    // printf("free times = %u\n", counter++);
     size_t *header = (size_t *)((char *)ptr - SIZE_T_SIZE);
     assert(IS_ALLOC(header));
+    size_t size = GET_SIZE(header);
+    size_t *footer = (size_t *)((char *)header + size + SIZE_T_SIZE);
+
+    // merge right only change footer
+    size_t *right_header = (size_t *)((char *)header + size + 2 * SIZE_T_SIZE);
+    if (!IS_HIGH(header) && IS_FREE(right_header)) {
+        // extract node of right header
+        extract_node(right_header);
+        // set header
+        size = size + GET_SIZE(right_header) + 2 * SIZE_T_SIZE;
+        *header = size;
+        // set footer
+        size_t *right_footer = GET_FOOTER_FROM_HEADER(right_header);
+        assert(IS_FREE(right_footer));
+        footer = right_footer;
+        memmove(footer, header, ALIGNMENT);
+        // not yet head insert
+    } else {
+        assert(IS_HIGH(header) || IS_ALLOC(right_header)); // TODO this is good
+    }
+
+    if ((char *)header == heap_low) {
+    }
+    // merge left only changes header
+    size_t *left_footer = (size_t *)((char *)header - SIZE_T_SIZE);
+    if (!IS_LOW(header) && IS_FREE(left_footer)) {
+        // set header
+        size_t *left_header = GET_HEADER_FROM_FOOTER(left_footer);
+        assert(IS_FREE(left_header));
+        header = left_header;
+        *header = GET_SIZE(left_header) + size + 2 * SIZE_T_SIZE;
+        memmove(footer, header, ALIGNMENT);
+        // the node stays the same!
+    } else {
+        assert(IS_LOW(header) || IS_ALLOC(left_footer));
+        head_insert(header);
+    }
     // set free
     *header &= ~0x1;
-    // need to add pointers!
-    PREV_HEADER(header) = 0;
-    NEXT_HEADER(header) = (size_t)list_root;
-    // add to front of list!
-    list_root = header;
-    // TODO maybe coalescing! there is at most 2 to coalesce! later!
     return;
 }
 
@@ -153,9 +198,11 @@ void split(size_t *header, size_t newsize) {
     size_t threshold = 8 * ALIGNMENT;
     size_t oldsize = GET_SIZE(header);
     if (newsize + threshold <= oldsize) {
-        size_t *footer_left = (char *)header + newsize + SIZE_T_SIZE;
-        size_t *footer_right = (char *)header + oldsize + SIZE_T_SIZE;
-        size_t *header_right = (char *)footer_left + SIZE_T_SIZE;
+        size_t *footer_left =
+            (size_t *)((char *)header + newsize + SIZE_T_SIZE);
+        size_t *footer_right =
+            (size_t *)((char *)header + oldsize + SIZE_T_SIZE);
+        size_t *header_right = (size_t *)((char *)footer_left + SIZE_T_SIZE);
 
         // set left meta-data
         *header = newsize;
@@ -165,10 +212,28 @@ void split(size_t *header, size_t newsize) {
         size_t remain_size = oldsize - newsize - 2 * SIZE_T_SIZE;
         *header_right = remain_size;
         memmove(footer_right, header_right, ALIGNMENT);
-        // set pointer
-        PREV_HEADER(header_right) = 0;
-        NEXT_HEADER(header_right) = (size_t)list_root;
-        list_root = header_right;
+        // set pointer (header insert)
+        head_insert(header_right);
     }
     return;
+}
+
+// handle list invariant, take node out of list
+void extract_node(size_t *header) {
+    size_t *previous_header = (size_t *)PREV_HEADER(header);
+    size_t *next_header = (size_t *)NEXT_HEADER(header);
+    if (previous_header == 0) {
+        list_root = next_header;
+    } else {
+        NEXT_HEADER(previous_header) = (size_t)next_header;
+    }
+    if (!IS_LAST(next_header)) {
+        PREV_HEADER(next_header) = (size_t)previous_header;
+    } // TODO this is so ugly! use dummy node to refactor!
+}
+
+void head_insert(size_t *header) {
+    PREV_HEADER(header) = 0;
+    NEXT_HEADER(header) = (size_t)list_root;
+    list_root = header;
 }
