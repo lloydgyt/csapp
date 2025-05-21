@@ -76,15 +76,14 @@ int mm_init(void) {
     heap_low = (char *)p;
     heap_high = (char *)mem_heap_hi();
     size_t *first_header = (size_t *)p;
-    size_t *last_header = (size_t *)(heap_high - ALIGNMENT + 1);
+    // trick: put last header right 'in' the first header!
+    size_t *last_header = (size_t *)((char *)first_header + sizeof(size_t));
     *last_header = 1;
-    assert(IS_ALLOC(last_header));
-    assert(IS_ALIGN((char *)last_header + SIZE_T_SIZE));
 
-    *first_header = INIT_HEAP - 3 * ALIGNMENT;
+    *first_header = INIT_HEAP - 2 * ALIGNMENT;
     assert(IS_FREE(first_header));
     // footer! for first block
-    memmove((char *)last_header - ALIGNMENT, first_header, ALIGNMENT);
+    memmove(heap_high - (ALIGNMENT) + 1, first_header, ALIGNMENT);
     PREV_HEADER(first_header) = 0;
     NEXT_HEADER(first_header) = (size_t)last_header;
     list_root = first_header;
@@ -136,8 +135,8 @@ void mm_free(void *ptr) {
     size_t *footer = (size_t *)((char *)header + size + SIZE_T_SIZE);
 
     // merge right only change footer
-    size_t *right_header = (size_t *)((char *)header + size + 2 * SIZE_T_SIZE);
-    if (!IS_HIGH(header) && IS_FREE(right_header)) {
+    size_t *right_header = (size_t *)((char *)footer + SIZE_T_SIZE);
+    if (!IS_HIGH(footer) && IS_FREE(right_header)) {
         // extract node of right header
         extract_node(right_header);
         // set header
@@ -150,11 +149,9 @@ void mm_free(void *ptr) {
         memmove(footer, header, ALIGNMENT);
         // not yet head insert
     } else {
-        assert(IS_HIGH(header) || IS_ALLOC(right_header)); // TODO this is good
+        assert(IS_HIGH(footer) || IS_ALLOC(right_header)); // TODO this is good
     }
 
-    if ((char *)header == heap_low) {
-    }
     // merge left only changes header
     size_t *left_footer = (size_t *)((char *)header - SIZE_T_SIZE);
     if (!IS_LOW(header) && IS_FREE(left_footer)) {

@@ -7,11 +7,19 @@ HANDINDIR = /afs/cs.cmu.edu/academic/class/15213-f01/malloclab/handin
 
 CC = gcc
 CFLAGS = -Wall -O2 -m32
+CFLAGS_DEBUG = -m32 -g
 
 OBJS = mdriver.o mm.o memlib.o fsecs.o fcyc.o clock.o ftimer.o
 
 mdriver: $(OBJS)
 	$(CC) $(CFLAGS) -o mdriver $(OBJS)
+
+gdb: DEBUG
+	gdb --tui --args $< -a -V -l -f short1-bal.rep
+
+DEBUG: mdriver.c mm.c memlib.c fsecs.c fcyc.c clock.c ftimer.c
+	gcc -m32 -g -o $@ $^
+
 
 mdriver.o: mdriver.c fsecs.h fcyc.h clock.h memlib.h config.h mm.h
 memlib.o: memlib.c memlib.h
