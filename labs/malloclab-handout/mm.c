@@ -40,6 +40,7 @@ team_t team = {
 #define INIT_HEAP (ALIGNMENT * (1 << 10)) // TODO should be bigger!
 #define INCR (1 << 10)
 #define ROUND_UP(size) (((size) + (INCR) - 1) & ~((INCR) - 1))
+#define MIN(a, b) ((a) > (b) ? (b) : (a))
 
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
@@ -97,13 +98,14 @@ int mm_init(void) {
  *     Always allocate a block whose size is a multiple of the alignment.
  */
 void *mm_malloc(size_t size) {
+    // TODO how to handle this?
+    assert(size != 0);
     // static size_t counter = 0;
     // printf("\n");
     // printf("malloc times = %u\n", counter++);
     int newsize = ALIGN(size);
     // loop to check all free list
     size_t *header = list_root;
-    // find appropriate block
     while (!IS_LAST(header)) {
         // printf("times = %u, request_size = %u, current_size = %u\n", counter,
         //        newsize, GET_SIZE(header));
@@ -124,6 +126,7 @@ void *mm_malloc(size_t size) {
     split(header, newsize);
     assert(IS_ALLOC(header));
     assert(IS_ALIGN((void *)((char *)header + SIZE_T_SIZE)));
+    assert(GET_SIZE(header) >= newsize);
     return (void *)((char *)header + SIZE_T_SIZE);
 }
 
@@ -180,19 +183,25 @@ void mm_free(void *ptr) {
  * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
  */
 void *mm_realloc(void *ptr, size_t size) {
-    void *oldptr = ptr;
-    void *newptr;
-    size_t copySize;
+    // TODO actually there is more requirement!
+    // what if ptr is NULL??
+    // what if size is 0??
+    assert(ptr && size);
+    size_t *header = (size_t *)((char *)ptr - ALIGNMENT + 1);
+    assert(IS_ALLOC(header));
+    size_t old_size = GET_SIZE(header);
+    size_t new_size = ALIGN(size);
+    // find a bigger block
+    // how to assert malloc? malloc guarantees it!
+    void *new_ptr = mm_malloc(new_size);
 
-    newptr = mm_malloc(size);
-    if (newptr == NULL)
-        return NULL;
-    copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
-    if (size < copySize)
-        copySize = size;
-    memcpy(newptr, oldptr, copySize);
-    mm_free(oldptr);
-    return newptr;
+    // copy content min(old, new) bytes to new block
+    size_t copy_size = MIN(old_size, new_size);
+    memmove(new_ptr, ptr, copy_size);
+
+    // free the old block
+    mm_free(ptr);
+    return new_ptr;
 }
 
 /* helper function */
@@ -242,15 +251,15 @@ void head_insert(size_t *header) {
 
 /* expand the heap and return a pointer that is ready to use */
 size_t *expand(size_t request_size) {
-    size_t allocate_size = ROUND_UP(request_size);
-    void *p = mem_sbrk(allocate_size);
+    size_t expand_size = ROUND_UP(request_size);
+    void *p = mem_sbrk(expand_size);
     assert(p != (void *)-1);
     heap_high = (char *)mem_heap_hi();
 
     // set block metadata (except pointers)
     size_t *header = (size_t *)p;
     size_t *footer = (size_t *)(heap_high - ALIGNMENT + 1);
-    size_t newsize = allocate_size - 2 * ALIGNMENT;
+    size_t newsize = expand_size - 2 * ALIGNMENT;
     *header = newsize;
     assert(IS_FREE(header));
     memmove(footer, header, ALIGNMENT);
