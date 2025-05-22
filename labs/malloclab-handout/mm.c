@@ -63,8 +63,9 @@ team_t team = {
 static size_t *list_root; // points to the first header!
 static char *heap_low;    // points to the first byte in heap
 static char *heap_high;   // points to the last byte in heap
-static size_t malloc_counter = 0;
-static size_t free_counter = 0;
+// static size_t malloc_counter = 0;
+// static size_t free_counter = 0;
+// static size_t realloc_counter = 0;
 
 /* prototype */
 void split(size_t *header, size_t newsize);
@@ -106,8 +107,7 @@ void *mm_malloc(size_t size) {
     // TODO how to handle this?
     assert(size != 0);
 
-    printf("\n");
-    printf("malloc times = %u\n", malloc_counter++);
+    // printf("malloc times = %u\n", malloc_counter++);
     int newsize = ALIGN(size);
     // loop to check all free list
     size_t *header = list_root;
@@ -139,8 +139,7 @@ void *mm_malloc(size_t size) {
  * mm_free - Freeing a block does nothing.
  */
 void mm_free(void *ptr) {
-    printf("\n");
-    printf("free times = %u\n", free_counter++);
+    // printf("free times = %u\n", free_counter++);
     size_t *header = (size_t *)((char *)ptr - SIZE_T_SIZE);
     assert(IS_ALLOC(header));
     size_t size = GET_SIZE(header);
@@ -186,13 +185,15 @@ void mm_free(void *ptr) {
  * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
  */
 void *mm_realloc(void *ptr, size_t size) {
+    assert(ptr && size);
     // TODO actually there is more requirement!
     // what if ptr is NULL??
     // what if size is 0??
-    assert(ptr && size);
-    size_t *header = (size_t *)((char *)ptr - ALIGNMENT + 1);
-    assert(IS_ALLOC(header));
-    size_t old_size = GET_SIZE(header);
+
+    // printf("realloc times = %u\n", realloc_counter++);
+    size_t *old_header = (size_t *)((char *)ptr - ALIGNMENT);
+    assert(IS_ALLOC(old_header));
+    size_t old_size = GET_SIZE(old_header);
     size_t new_size = ALIGN(size);
     // find a bigger block
     // how to assert malloc? malloc guarantees it!
@@ -243,6 +244,7 @@ void extract_node(size_t *header) {
     } else {
         NEXT_HEADER(previous_header) = (size_t)next_header;
     }
+
     if (!IS_LAST(next_header)) {
         PREV_HEADER(next_header) = (size_t)previous_header;
     } // TODO this is so ugly! use dummy node to refactor!
@@ -254,7 +256,9 @@ void head_insert(size_t *header) {
     PREV_HEADER(header) = 0;
     NEXT_HEADER(header) = (size_t)next;
     list_root = header;
-    PREV_HEADER(next) = (size_t)header;
+    if (!IS_LAST(next)) {
+        PREV_HEADER(next) = (size_t)header;
+    }
 }
 
 /* expand the heap and return a pointer that is ready to use */

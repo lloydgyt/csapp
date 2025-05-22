@@ -11,13 +11,13 @@ CFLAGS_DEBUG = -m32 -g
 
 OBJS = mdriver.o mm.o memlib.o fsecs.o fcyc.o clock.o ftimer.o
 
-TRACE = traces/amptjp-bal.rep
+TRACE = traces/realloc2-bal.rep
 
 mdriver: $(OBJS)
 	$(CC) $(CFLAGS) -o mdriver $(OBJS)
 
 gdb: DEBUG
-	gdb --tui --args $< -a -V -l -f $(TRACE)
+	gdb --tui --args $< -a -V -f $(TRACE)
 
 DEBUG: mdriver.c mm.c memlib.c fsecs.c fcyc.c clock.c ftimer.c
 	gcc -m32 -g -o $@ $^
