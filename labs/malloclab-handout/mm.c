@@ -63,6 +63,8 @@ team_t team = {
 static size_t *list_root; // points to the first header!
 static char *heap_low;    // points to the first byte in heap
 static char *heap_high;   // points to the last byte in heap
+static size_t malloc_counter = 0;
+static size_t free_counter = 0;
 
 /* prototype */
 void split(size_t *header, size_t newsize);
@@ -104,15 +106,13 @@ void *mm_malloc(size_t size) {
     // TODO how to handle this?
     assert(size != 0);
 
-    static size_t counter = 0;
     printf("\n");
-    printf("malloc times = %u\n", counter++);
+    printf("malloc times = %u\n", malloc_counter++);
     int newsize = ALIGN(size);
     // loop to check all free list
     size_t *header = list_root;
     while (!IS_LAST(header)) {
-        // printf("times = %u, request_size = %u, current_size = %u\n", counter,
-        //        newsize, GET_SIZE(header));
+        assert(IS_FREE(header));
         if (newsize <= GET_SIZE(header)) {
             break;
         }
@@ -125,9 +125,9 @@ void *mm_malloc(size_t size) {
     }
 
     assert(IS_FREE(header) && (newsize <= GET_SIZE(header)));
+    split(header, newsize);
     extract_node(header);
     mark_allocated(header, GET_FOOTER_FROM_HEADER(header));
-    split(header, newsize);
     assert(IS_ALLOC(header));
     assert(IS_ALIGN((void *)((char *)header + SIZE_T_SIZE)));
     assert(GET_SIZE(header) >= newsize);
@@ -139,9 +139,8 @@ void *mm_malloc(size_t size) {
  * mm_free - Freeing a block does nothing.
  */
 void mm_free(void *ptr) {
-    static size_t counter = 0;
     printf("\n");
-    printf("free times = %u\n", counter++);
+    printf("free times = %u\n", free_counter++);
     size_t *header = (size_t *)((char *)ptr - SIZE_T_SIZE);
     assert(IS_ALLOC(header));
     size_t size = GET_SIZE(header);
@@ -208,7 +207,10 @@ void *mm_realloc(void *ptr, size_t size) {
     return new_ptr;
 }
 
-/* helper function */
+/* HELPER FUNCTION */
+/*
+    may split a free into 2, insert the right free block
+*/
 void split(size_t *header, size_t newsize) {
     size_t threshold = 8 * ALIGNMENT;
     size_t oldsize = GET_SIZE(header);
@@ -221,13 +223,13 @@ void split(size_t *header, size_t newsize) {
 
         // set left meta-data
         set_size(header, footer_left, newsize);
-        mark_allocated(header, footer_left);
 
         // set right meta-data
         size_t remain_size = oldsize - newsize - 2 * SIZE_T_SIZE;
         set_size(header_right, footer_right, remain_size);
         // set pointer (header insert)
         head_insert(header_right);
+        assert(IS_FREE(header_right));
     }
     return;
 }
@@ -247,9 +249,12 @@ void extract_node(size_t *header) {
 }
 
 void head_insert(size_t *header) {
+    size_t *next = list_root;
+
     PREV_HEADER(header) = 0;
-    NEXT_HEADER(header) = (size_t)list_root;
+    NEXT_HEADER(header) = (size_t)next;
     list_root = header;
+    PREV_HEADER(next) = (size_t)header;
 }
 
 /* expand the heap and return a pointer that is ready to use */
