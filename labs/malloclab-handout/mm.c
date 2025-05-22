@@ -69,6 +69,9 @@ void split(size_t *header, size_t newsize);
 void extract_node(size_t *header);
 void head_insert(size_t *header);
 size_t *expand(size_t request_size);
+void mark_free(size_t *header, size_t *footer);
+void mark_allocated(size_t *header, size_t *footer);
+void set_size(size_t *header, size_t *footer, size_t newsize);
 
 /*
  * mm_init - initialize the malloc package.
@@ -100,9 +103,10 @@ int mm_init(void) {
 void *mm_malloc(size_t size) {
     // TODO how to handle this?
     assert(size != 0);
-    // static size_t counter = 0;
-    // printf("\n");
-    // printf("malloc times = %u\n", counter++);
+
+    static size_t counter = 0;
+    printf("\n");
+    printf("malloc times = %u\n", counter++);
     int newsize = ALIGN(size);
     // loop to check all free list
     size_t *header = list_root;
@@ -122,11 +126,12 @@ void *mm_malloc(size_t size) {
 
     assert(IS_FREE(header) && (newsize <= GET_SIZE(header)));
     extract_node(header);
-    *header |= 0x1; // mark as used
+    mark_allocated(header, GET_FOOTER_FROM_HEADER(header));
     split(header, newsize);
     assert(IS_ALLOC(header));
     assert(IS_ALIGN((void *)((char *)header + SIZE_T_SIZE)));
     assert(GET_SIZE(header) >= newsize);
+
     return (void *)((char *)header + SIZE_T_SIZE);
 }
 
@@ -134,9 +139,9 @@ void *mm_malloc(size_t size) {
  * mm_free - Freeing a block does nothing.
  */
 void mm_free(void *ptr) {
-    // static size_t counter = 0;
-    // printf("\n");
-    // printf("free times = %u\n", counter++);
+    static size_t counter = 0;
+    printf("\n");
+    printf("free times = %u\n", counter++);
     size_t *header = (size_t *)((char *)ptr - SIZE_T_SIZE);
     assert(IS_ALLOC(header));
     size_t size = GET_SIZE(header);
@@ -145,16 +150,15 @@ void mm_free(void *ptr) {
     // merge right only change footer
     size_t *right_header = (size_t *)((char *)footer + SIZE_T_SIZE);
     if (!IS_HIGH(footer) && IS_FREE(right_header)) {
-        // extract node of right header
-        extract_node(right_header);
-        // set header
-        size = size + GET_SIZE(right_header) + 2 * SIZE_T_SIZE;
-        *header = size;
-        // set footer
         size_t *right_footer = GET_FOOTER_FROM_HEADER(right_header);
         assert(IS_FREE(right_footer));
+        assert(GET_SIZE(right_header) == GET_SIZE(right_footer));
+        // TODO wrap this later!
         footer = right_footer;
-        memmove(footer, header, ALIGNMENT);
+        // extract node of right header
+        extract_node(right_header);
+        size = size + GET_SIZE(right_header) + 2 * SIZE_T_SIZE;
+        set_size(header, footer, size);
         // not yet head insert
     } else {
         assert(IS_HIGH(footer) || IS_ALLOC(right_header)); // TODO this is good
@@ -166,16 +170,16 @@ void mm_free(void *ptr) {
         // set header
         size_t *left_header = GET_HEADER_FROM_FOOTER(left_footer);
         assert(IS_FREE(left_header));
+        assert(GET_SIZE(left_footer) == GET_SIZE(left_header));
         header = left_header;
-        *header = GET_SIZE(left_header) + size + 2 * SIZE_T_SIZE;
-        memmove(footer, header, ALIGNMENT);
+        set_size(header, footer,
+                 GET_SIZE(left_header) + size + 2 * SIZE_T_SIZE);
         // the node stays the same!
     } else {
         assert(IS_LOW(header) || IS_ALLOC(left_footer));
         head_insert(header);
     }
-    // set free
-    *header &= ~0x1;
+    mark_free(header, footer);
     return;
 }
 
@@ -216,13 +220,12 @@ void split(size_t *header, size_t newsize) {
         size_t *header_right = (size_t *)((char *)footer_left + SIZE_T_SIZE);
 
         // set left meta-data
-        *header = newsize;
-        *header |= 0x1;
-        memmove(footer_left, header, ALIGNMENT);
+        set_size(header, footer_left, newsize);
+        mark_allocated(header, footer_left);
+
         // set right meta-data
         size_t remain_size = oldsize - newsize - 2 * SIZE_T_SIZE;
-        *header_right = remain_size;
-        memmove(footer_right, header_right, ALIGNMENT);
+        set_size(header_right, footer_right, remain_size);
         // set pointer (header insert)
         head_insert(header_right);
     }
@@ -260,9 +263,7 @@ size_t *expand(size_t request_size) {
     size_t *header = (size_t *)p;
     size_t *footer = (size_t *)(heap_high - ALIGNMENT + 1);
     size_t newsize = expand_size - 2 * ALIGNMENT;
-    *header = newsize;
-    assert(IS_FREE(header));
-    memmove(footer, header, ALIGNMENT);
+    set_size(header, footer, newsize);
 
     // maybe merge left
     // TODO may wrap this (footer needs to be set before!)
@@ -271,15 +272,30 @@ size_t *expand(size_t request_size) {
         // set header
         size_t *left_header = GET_HEADER_FROM_FOOTER(left_footer);
         assert(IS_FREE(left_header));
+        assert(GET_SIZE(left_footer) == GET_SIZE(left_header));
         header = left_header;
-        *header = GET_SIZE(left_header) + newsize + 2 * SIZE_T_SIZE;
-        memmove(footer, header, ALIGNMENT);
+        set_size(header, footer,
+                 GET_SIZE(left_header) + newsize + 2 * SIZE_T_SIZE);
         // the node stays the same!
     } else {
         assert(IS_LOW(header) || IS_ALLOC(left_footer));
         head_insert(header);
     }
-    // set free
-    *header &= ~0x1;
+    mark_free(header, footer);
     return header;
+}
+
+void mark_free(size_t *header, size_t *footer) {
+    *header &= ~0x1;
+    memmove(footer, header, ALIGNMENT);
+}
+
+void mark_allocated(size_t *header, size_t *footer) {
+    *header |= 0x1;
+    memmove(footer, header, ALIGNMENT);
+}
+
+void set_size(size_t *header, size_t *footer, size_t newsize) {
+    *header = newsize;
+    memmove(footer, header, ALIGNMENT);
 }
