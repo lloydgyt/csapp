@@ -10,6 +10,7 @@
  * comment that gives a high level description of your solution.
  */
 #include <assert.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,8 +39,8 @@ team_t team = {
 typedef unsigned short index_t;
 /* single word (4) or double word (8) alignment */
 #define ALIGNMENT 8
-#define INIT_HEAP (ALIGNMENT * (1 << 10))
-#define INCR (1 << 10)
+#define INIT_HEAP (ALIGNMENT * (1 << 17))
+#define INCR (1 << 17)
 #define ROUND_UP(size) (((size) + (INCR) - 1) & ~((INCR) - 1))
 #define MIN(a, b) ((a) > (b) ? (b) : (a))
 
@@ -68,7 +69,7 @@ static char *heap_low;      // points to the first byte in heap
 static char *heap_high;     // points to the last byte in heap
 static size_t malloc_counter = 0;
 static size_t free_counter = 0;
-// static size_t realloc_counter = 0;
+static size_t realloc_counter = 0;
 
 /* prototype */
 void split(size_t *header, size_t newsize);
@@ -84,7 +85,9 @@ void coalesce_right(size_t *header, size_t **footer_p);
 void coalesce_left(size_t **header_p, size_t *footer);
 void DS_consistency_checker();
 void list_consistency_checker(size_t *root);
+void block_consistency_checker();
 index_t which_list(size_t size);
+bool in_list(size_t *header);
 
 /*
  * mm_init - initialize the malloc package.
@@ -159,11 +162,10 @@ void mm_free(void *ptr) {
     assert(IS_ALLOC(header));
     size_t size = GET_SIZE(header);
     size_t *footer = (size_t *)((char *)header + size + SIZE_T_SIZE);
-    mark_free(header, footer);
 
     coalesce_right(header, &footer);
     coalesce_left(&header, footer);
-    assert(IS_FREE(header));
+    mark_free(header, footer);
     head_insert(header);
 
     // DS_consistency_checker();
@@ -179,21 +181,41 @@ void *mm_realloc(void *ptr, size_t size) {
     // what if ptr is NULL??
     // what if size is 0??
 
+    realloc_counter++;
     // printf("realloc times = %u\n", realloc_counter++);
-    size_t *old_header = (size_t *)((char *)ptr - ALIGNMENT);
-    assert(IS_ALLOC(old_header));
-    size_t old_size = GET_SIZE(old_header);
+
+    size_t *header = (size_t *)((char *)ptr - ALIGNMENT);
+    assert(IS_ALLOC(header));
+    size_t old_size = GET_SIZE(header);
     size_t new_size = ALIGN(size);
-    // find a bigger block
-    // how to assert malloc? malloc guarantees it!
-    void *new_ptr = mm_malloc(new_size);
+    void *new_ptr;
 
-    // copy content min(old, new) bytes to new block
+    size_t *footer = GET_FOOTER_FROM_HEADER(header);
+    coalesce_right(header, &footer);
+    coalesce_left(&header, footer);
+    // TODO the data will remain intact! how to assert?
     size_t copy_size = MIN(old_size, new_size);
-    memmove(new_ptr, ptr, copy_size);
+    if (GET_SIZE(header) >= new_size) {
+        // current block is still used!
+        mark_allocated(header, footer);
+        new_ptr = (void *)((char *)header + SIZE_T_SIZE);
+        if (new_ptr != ptr) {
+            // left coalesce happened
+            // TODO maybe using memcpy? will it boost up?! probably!
+            memmove(new_ptr, ptr, copy_size);
+        }
+        // TODO need to split?
+        // TODO why want to merge and then split? how to reduce?
+    } else {
+        // look for new one!
+        new_ptr = mm_malloc(new_size);
+        // copy content min(old, new) bytes to new block
+        memmove(new_ptr, ptr, copy_size);
 
-    // free the old block
-    mm_free(ptr);
+        // free older block
+        mark_free(header, footer);
+        head_insert(header);
+    }
     // DS_consistency_checker();
     return new_ptr;
 }
@@ -227,6 +249,7 @@ void split(size_t *header, size_t newsize) {
 
 // handle list invariant, take node out of list
 void extract_node(size_t *header) {
+    assert(IS_FREE(header));
     size_t *previous_header = (size_t *)PREV_HEADER(header);
     size_t *next_header = (size_t *)NEXT_HEADER(header);
     if (previous_header == 0) {
@@ -321,7 +344,6 @@ size_t **get_root_pointer(index_t index) {
     get a big free block, pointer is not set yet
 */
 void coalesce_right(size_t *header, size_t **footer_p) {
-    assert(IS_FREE(header));
     size_t size = GET_SIZE(header);
     size_t *footer = *footer_p;
     size_t *right_header = (size_t *)((char *)footer + SIZE_T_SIZE);
@@ -347,7 +369,6 @@ void coalesce_right(size_t *header, size_t **footer_p) {
 */
 void coalesce_left(size_t **header_p, size_t *footer) {
     size_t *header = *header_p;
-    assert(IS_FREE(header));
     size_t size = GET_SIZE(header);
     size_t *left_footer = (size_t *)((char *)header - SIZE_T_SIZE);
     if (!IS_LOW(header) && IS_FREE(left_footer)) {
@@ -368,6 +389,7 @@ void coalesce_left(size_t **header_p, size_t *footer) {
 void DS_consistency_checker() {
     list_consistency_checker(list_root_0);
     list_consistency_checker(list_root_1);
+    block_consistency_checker();
 }
 
 void list_consistency_checker(size_t *root) {
@@ -381,10 +403,39 @@ void list_consistency_checker(size_t *root) {
     }
 }
 
+void block_consistency_checker() {
+    // check all block
+    size_t *header = (size_t *)((char *)heap_low + ALIGNMENT);
+    while ((size_t)header < (size_t)heap_high) {
+        size_t *footer = GET_FOOTER_FROM_HEADER(header);
+        assert(GET_SIZE(header) == GET_SIZE(footer));
+        if (IS_FREE(header)) {
+            assert((in_list(header)));
+        } else {
+            assert(IS_ALLOC(header));
+        }
+        // update
+        header = (size_t *)((char *)footer + ALIGNMENT);
+    }
+}
+
 index_t which_list(size_t size) {
     if (size > 128 * ALIGNMENT) {
         return 0;
     } else {
         return 1;
     }
+}
+
+bool in_list(size_t *header) {
+    index_t index = which_list(GET_SIZE(header));
+    size_t *curr_header = get_root(index);
+    while (!IS_LAST(curr_header)) {
+        if (curr_header == header) {
+            return true;
+        }
+        // update
+        curr_header = (size_t *)NEXT_HEADER(curr_header);
+    }
+    return false;
 }
