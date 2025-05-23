@@ -35,6 +35,7 @@ team_t team = {
     /* Second member's email address (leave blank if none) */
     ""};
 
+typedef unsigned short index_t;
 /* single word (4) or double word (8) alignment */
 #define ALIGNMENT 8
 #define INIT_HEAP (ALIGNMENT * (1 << 10))
@@ -52,6 +53,7 @@ team_t team = {
 #define IS_LAST(header) (*(header) == 1)
 #define PREV_HEADER(header) ((header)[2])
 #define NEXT_HEADER(header) ((header)[3])
+#define LIST_INDEX(header) ((header)[1])
 #define GET_SIZE(header) (*(header) & ~0x7)
 #define GET_FOOTER_FROM_HEADER(header)                                         \
     ((size_t *)((char *)(header) + (GET_SIZE(header)) + (SIZE_T_SIZE)))
@@ -76,12 +78,13 @@ size_t *expand(size_t request_size);
 void mark_free(size_t *header, size_t *footer);
 void mark_allocated(size_t *header, size_t *footer);
 void set_size(size_t *header, size_t *footer, size_t newsize);
-size_t *get_root(size_t size);
-size_t **get_root_pointer(size_t size);
+size_t *get_root(index_t index);
+size_t **get_root_pointer(index_t index);
 void coalesce_right(size_t *header, size_t **footer_p);
 void coalesce_left(size_t **header_p, size_t *footer);
 void DS_consistency_checker();
 void list_consistency_checker(size_t *root);
+index_t which_list(size_t size);
 
 /*
  * mm_init - initialize the malloc package.
@@ -91,21 +94,19 @@ int mm_init(void) {
     assert(p != (void *)-1);
     heap_low = (char *)p;
     heap_high = (char *)mem_heap_hi();
-    size_t *first_header = (size_t *)p;
-    size_t *first_footer = (size_t *)(heap_high - (ALIGNMENT) + 1);
-    set_size(first_header, first_footer, INIT_HEAP - 2 * ALIGNMENT);
-
-    // trick: put last header right 'in' the first header!
-    size_t *last_header = (size_t *)((char *)first_header + sizeof(size_t));
+    // trick: put last header in the first 8 byte
+    size_t *last_header = (size_t *)p;
     *last_header = 1;
+    size_t *first_header = (size_t *)((char *)last_header + ALIGNMENT);
+    size_t *first_footer = (size_t *)(heap_high - (ALIGNMENT) + 1);
+    set_size(first_header, first_footer, INIT_HEAP - 3 * ALIGNMENT);
 
     assert(IS_FREE(first_header));
     PREV_HEADER(first_header) = 0;
     NEXT_HEADER(first_header) = (size_t)last_header;
-    // TODO seglist
     list_root_0 = first_header;
     list_root_1 = last_header;
-    DS_consistency_checker();
+    // DS_consistency_checker();
     return 0;
 }
 
@@ -121,8 +122,7 @@ void *mm_malloc(size_t size) {
     // printf("malloc times = %u\n", malloc_counter++);
     int newsize = ALIGN(size);
     // loop to check all free list
-    // TODO seglist
-    size_t *header = get_root(newsize);
+    size_t *header = get_root(which_list(newsize));
     while (!IS_LAST(header)) {
         assert(IS_FREE(header));
         if (newsize <= GET_SIZE(header)) {
@@ -136,9 +136,6 @@ void *mm_malloc(size_t size) {
     if (IS_LAST(header)) {
         header = expand(newsize);
     }
-    if (malloc_counter == 10) {
-        DS_consistency_checker();
-    }
 
     assert(IS_FREE(header) && (newsize <= GET_SIZE(header)));
     split(header, newsize);
@@ -148,7 +145,7 @@ void *mm_malloc(size_t size) {
     assert(IS_ALIGN((void *)((char *)header + SIZE_T_SIZE)));
     assert(GET_SIZE(header) >= newsize);
 
-    DS_consistency_checker();
+    // DS_consistency_checker();
     return (void *)((char *)header + SIZE_T_SIZE);
 }
 
@@ -165,13 +162,11 @@ void mm_free(void *ptr) {
     mark_free(header, footer);
 
     coalesce_right(header, &footer);
-    DS_consistency_checker();
     coalesce_left(&header, footer);
-    DS_consistency_checker();
     assert(IS_FREE(header));
     head_insert(header);
 
-    DS_consistency_checker();
+    // DS_consistency_checker();
     return;
 }
 
@@ -199,7 +194,7 @@ void *mm_realloc(void *ptr, size_t size) {
 
     // free the old block
     mm_free(ptr);
-    DS_consistency_checker();
+    // DS_consistency_checker();
     return new_ptr;
 }
 
@@ -226,9 +221,6 @@ void split(size_t *header, size_t newsize) {
         // set pointer (header insert)
         head_insert(header_right);
         assert(IS_FREE(header_right));
-        if (malloc_counter == 10) {
-            DS_consistency_checker();
-        }
     }
     return;
 }
@@ -238,8 +230,7 @@ void extract_node(size_t *header) {
     size_t *previous_header = (size_t *)PREV_HEADER(header);
     size_t *next_header = (size_t *)NEXT_HEADER(header);
     if (previous_header == 0) {
-        // TODO seglist
-        size_t **rootp = get_root_pointer(GET_SIZE(header));
+        size_t **rootp = get_root_pointer(LIST_INDEX(header));
         *rootp = next_header;
     } else {
         NEXT_HEADER(previous_header) = (size_t)next_header;
@@ -252,18 +243,18 @@ void extract_node(size_t *header) {
 
 // TODO should also pass size!
 void head_insert(size_t *header) {
-    // TODO seglist
     size_t size = GET_SIZE(header);
-    size_t *next = get_root(size);
+    index_t index = which_list(size);
+    size_t *next = get_root(index);
 
     PREV_HEADER(header) = 0;
     NEXT_HEADER(header) = (size_t)next;
-    // TODO seglist
-    size_t **rootp = get_root_pointer(size);
+    size_t **rootp = get_root_pointer(index);
     *rootp = header;
     if (!IS_LAST(next)) {
         PREV_HEADER(next) = (size_t)header;
     }
+    LIST_INDEX(header) = index;
 }
 
 /* expand the heap and return a pointer that is ready to use */
@@ -300,20 +291,28 @@ void set_size(size_t *header, size_t *footer, size_t newsize) {
     memmove(footer, header, ALIGNMENT);
 }
 
-size_t *get_root(size_t size) {
-    // TODO change later
-    if (size > 128 * ALIGNMENT) {
+size_t *get_root(index_t index) {
+    switch (index) {
+    case 0:
         return list_root_0;
-    } else {
+        // no need to break
+    case 1:
         return list_root_1;
+    // no need to break
+    default:
+        assert(0);
     }
 }
-size_t **get_root_pointer(size_t size) {
-    // TODO change later
-    if (size > 128 * ALIGNMENT) {
+size_t **get_root_pointer(index_t index) {
+    switch (index) {
+    case 0:
         return &list_root_0;
-    } else {
+        // no need to break
+    case 1:
         return &list_root_1;
+        // no need to break
+    default:
+        assert(0);
     }
 }
 
@@ -379,5 +378,13 @@ void list_consistency_checker(size_t *root) {
         assert(GET_SIZE(header) == GET_SIZE(footer));
         // update
         header = (size_t *)NEXT_HEADER(header);
+    }
+}
+
+index_t which_list(size_t size) {
+    if (size > 128 * ALIGNMENT) {
+        return 0;
+    } else {
+        return 1;
     }
 }
