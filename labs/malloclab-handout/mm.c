@@ -39,9 +39,10 @@ team_t team = {
 typedef unsigned short index_t;
 /* single word (4) or double word (8) alignment */
 #define ALIGNMENT 8
-#define INIT_HEAP (ALIGNMENT * (1 << 17))
-#define INCR (1 << 17)
+#define INIT_HEAP (ALIGNMENT * (1 << 10))
+#define INCR (1 << 11)
 #define ROUND_UP(size) (((size) + (INCR) - 1) & ~((INCR) - 1))
+#define THRESHOLD (ALIGNMENT * (1 << 3))
 #define MIN(a, b) ((a) > (b) ? (b) : (a))
 
 /* rounds up to the nearest multiple of ALIGNMENT */
@@ -88,6 +89,8 @@ void list_consistency_checker(size_t *root);
 void block_consistency_checker();
 index_t which_list(size_t size);
 bool in_list(size_t *header);
+size_t *get_free_block(size_t newsize);
+size_t *next_bigger_root(size_t *root);
 
 /*
  * mm_init - initialize the malloc package.
@@ -124,21 +127,7 @@ void *mm_malloc(size_t size) {
     malloc_counter++;
     // printf("malloc times = %u\n", malloc_counter++);
     int newsize = ALIGN(size);
-    // loop to check all free list
-    size_t *header = get_root(which_list(newsize));
-    while (!IS_LAST(header)) {
-        assert(IS_FREE(header));
-        if (newsize <= GET_SIZE(header)) {
-            break;
-        }
-        // update
-        header = (size_t *)NEXT_HEADER(header);
-    }
-    // can't find block, expand heap
-    // TODO if not found, should go to next pointer first!
-    if (IS_LAST(header)) {
-        header = expand(newsize);
-    }
+    size_t *header = get_free_block(newsize);
 
     assert(IS_FREE(header) && (newsize <= GET_SIZE(header)));
     split(header, newsize);
@@ -225,9 +214,8 @@ void *mm_realloc(void *ptr, size_t size) {
     may split a free into 2, insert the right free block
 */
 void split(size_t *header, size_t newsize) {
-    size_t threshold = 8 * ALIGNMENT;
     size_t oldsize = GET_SIZE(header);
-    if (newsize + threshold <= oldsize) {
+    if (newsize + THRESHOLD <= oldsize) {
         size_t *footer_left =
             (size_t *)((char *)header + newsize + SIZE_T_SIZE);
         size_t *footer_right =
@@ -282,7 +270,7 @@ void head_insert(size_t *header) {
 
 /* expand the heap and return a pointer that is ready to use */
 size_t *expand(size_t request_size) {
-    size_t expand_size = ROUND_UP(request_size);
+    size_t expand_size = ROUND_UP(request_size + 2 * ALIGNMENT);
     void *p = mem_sbrk(expand_size);
     assert(p != (void *)-1);
     heap_high = (char *)mem_heap_hi();
@@ -420,7 +408,7 @@ void block_consistency_checker() {
 }
 
 index_t which_list(size_t size) {
-    if (size > 128 * ALIGNMENT) {
+    if (size >= 128 * ALIGNMENT) {
         return 0;
     } else {
         return 1;
@@ -438,4 +426,38 @@ bool in_list(size_t *header) {
         curr_header = (size_t *)NEXT_HEADER(curr_header);
     }
     return false;
+}
+
+/* get a block whose size is bigger than newsize */
+size_t *get_free_block(size_t newsize) {
+    size_t *root = get_root(which_list(newsize));
+    size_t *header;
+    while (root) {
+        // search within that list!
+        header = root;
+        while (!IS_LAST(header)) {
+            assert(IS_FREE(header));
+            if (newsize <= GET_SIZE(header)) {
+                goto FOUND;
+            }
+            // update
+            header = (size_t *)NEXT_HEADER(header);
+        } // not found in that list
+        // update
+        root = next_bigger_root(root);
+    } // not found in all list
+    header = expand(newsize);
+FOUND:
+    return header;
+}
+
+size_t *next_bigger_root(size_t *root) {
+    // list root 0 is bigger!
+    // TODO store root in memory will be better
+    assert(root == list_root_0 || root == list_root_1);
+    if (root == list_root_0) {
+        return NULL;
+    } else {
+        return list_root_0;
+    }
 }
