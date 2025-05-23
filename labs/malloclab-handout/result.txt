@@ -16,3 +16,63 @@ Total          69%  112372  0.040019  2808
 
 Perf index = 41 (util) + 6 (thru) = 47/100
 """ END """
+
+""" BEGIN seg list with free before malloc (13, 10) """
+    and using switch list if on small list not found
+Results for mm malloc:
+trace  valid  util     ops      secs  Kops
+ 0       yes   91%    5694  0.000204 27939
+ 1       yes   92%    5848  0.000197 29731
+ 2       yes   94%    6648  0.000250 26635
+ 3       yes   97%    5380  0.000203 26542
+ 4       yes   67%   14400  0.000448 32129
+ 5       yes   86%    4800  0.000392 12248
+ 6       yes   84%    4800  0.000433 11075
+ 7       yes   54%   12000  0.006713  1787
+ 8       yes   47%   24000  0.005813  4129
+ 9       yes   87%   14401  0.000355 40532
+10       yes   16%   14401  0.000351 41064
+Total          74%  112372  0.015358  7317
+
+Perf index = 44 (util) + 15 (thru) = 59/100
+""" END """
+
+""" BEGIN seg list with free before malloc (20, 17) """
+    and using switch list if on small list not found
+Results for mm malloc:
+trace  valid  util     ops      secs  Kops
+ 0       yes   85%    5694  0.000173 33009
+ 1       yes   92%    5848  0.000184 31765
+ 2       yes   93%    6648  0.000204 32604
+ 3       yes   93%    5380  0.000169 31778
+ 4       yes    1%   14400  0.000382 37736
+ 5       yes   83%    4800  0.000259 18519
+ 6       yes   81%    4800  0.000262 18321
+ 7       yes   52%   12000  0.007347  1633
+ 8       yes   44%   24000  0.028690   837
+ 9       yes   34%   14401  0.000334 43168
+10       yes    2%   14401  0.000333 43194
+Total          60%  112372  0.038337  2931
+
+Perf index = 36 (util) + 6 (thru) = 42/100
+""" END """
+
+""" BEGIN seg list with free before malloc (13, 7) """
+so splitting does not matter! but what matters??
+Results for mm malloc:
+trace  valid  util     ops      secs  Kops
+ 0       yes   89%    5694  0.000199 28584
+ 1       yes   93%    5848  0.000195 29928
+ 2       yes   96%    6648  0.000229 28993
+ 3       yes   96%    5380  0.000184 29192
+ 4       yes   66%   14400  0.000375 38359
+ 5       yes   86%    4800  0.000384 12510
+ 6       yes   85%    4800  0.000397 12088
+ 7       yes   49%   12000  0.006529  1838
+ 8       yes   44%   24000  0.041683   576
+ 9       yes   83%   14401  0.000451 31903
+10       yes   13%   14401  0.000371 38859
+Total          73%  112372  0.050998  2203
+
+Perf index = 44 (util) + 4 (thru) = 48/100
+""" END """

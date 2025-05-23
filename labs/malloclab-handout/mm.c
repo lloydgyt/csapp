@@ -39,8 +39,7 @@ team_t team = {
 typedef unsigned short index_t;
 /* single word (4) or double word (8) alignment */
 #define ALIGNMENT 8
-#define INIT_HEAP (ALIGNMENT * (1 << 10))
-#define INCR (1 << 11)
+#define INCR (1 << 10)
 #define ROUND_UP(size) (((size) + (INCR) - 1) & ~((INCR) - 1))
 #define THRESHOLD (ALIGNMENT * (1 << 3))
 #define MIN(a, b) ((a) > (b) ? (b) : (a))
@@ -55,22 +54,25 @@ typedef unsigned short index_t;
 #define IS_LAST(header) (*(header) == 1)
 #define PREV_HEADER(header) ((header)[2])
 #define NEXT_HEADER(header) ((header)[3])
+// TODO this is important!
 #define LIST_INDEX(header) ((header)[1])
 #define GET_SIZE(header) (*(header) & ~0x7)
 #define GET_FOOTER_FROM_HEADER(header)                                         \
     ((size_t *)((char *)(header) + (GET_SIZE(header)) + (SIZE_T_SIZE)))
 #define GET_HEADER_FROM_FOOTER(footer)                                         \
     ((size_t *)((char *)(footer) - (GET_SIZE(footer)) - (SIZE_T_SIZE)))
-#define IS_LOW(header) ((char *)(header) == heap_low)
+#define IS_LOW(header) ((header) == first_block_header)
 #define IS_HIGH(header) ((char *)(header) == (heap_high - (ALIGNMENT) + 1))
 
-static size_t *list_root_0; // points to the bigger list
-static size_t *list_root_1; // points to the small list
-static char *heap_low;      // points to the first byte in heap
-static char *heap_high;     // points to the last byte in heap
+// static size_t *list_root_0; // points to the bigger list
+// static size_t *list_root_1; // points to the small list
+static char *heap_low;  // points to the first byte in heap
+static char *heap_high; // points to the last byte in heap
+static size_t *root;
 static size_t malloc_counter = 0;
 static size_t free_counter = 0;
 static size_t realloc_counter = 0;
+static size_t *first_block_header;
 
 /* prototype */
 void split(size_t *header, size_t newsize);
@@ -80,8 +82,6 @@ size_t *expand(size_t request_size);
 void mark_free(size_t *header, size_t *footer);
 void mark_allocated(size_t *header, size_t *footer);
 void set_size(size_t *header, size_t *footer, size_t newsize);
-size_t *get_root(index_t index);
-size_t **get_root_pointer(index_t index);
 void coalesce_right(size_t *header, size_t **footer_p);
 void coalesce_left(size_t **header_p, size_t *footer);
 void DS_consistency_checker();
@@ -90,28 +90,22 @@ void block_consistency_checker();
 index_t which_list(size_t size);
 bool in_list(size_t *header);
 size_t *get_free_block(size_t newsize);
-size_t *next_bigger_root(size_t *root);
 
 /*
  * mm_init - initialize the malloc package.
  */
 int mm_init(void) {
-    void *p = mem_sbrk(INIT_HEAP);
+    void *p = mem_sbrk(2 * ALIGNMENT);
     assert(p != (void *)-1);
     heap_low = (char *)p;
     heap_high = (char *)mem_heap_hi();
-    // trick: put last header in the first 8 byte
-    size_t *last_header = (size_t *)p;
-    *last_header = 1;
-    size_t *first_header = (size_t *)((char *)last_header + ALIGNMENT);
-    size_t *first_footer = (size_t *)(heap_high - (ALIGNMENT) + 1);
-    set_size(first_header, first_footer, INIT_HEAP - 3 * ALIGNMENT);
-
-    assert(IS_FREE(first_header));
-    PREV_HEADER(first_header) = 0;
-    NEXT_HEADER(first_header) = (size_t)last_header;
-    list_root_0 = first_header;
-    list_root_1 = last_header;
+    root = (size_t *)heap_low;
+    root[0] = (size_t)(&(root[3])); // 0th list, smalllest
+    root[1] = (size_t)(&(root[3])); // 1th list
+    root[2] = (size_t)(&(root[3])); // 2th list, biggest
+    root[3] = 1;                    // this is the last header
+    first_block_header =
+        (size_t *)(heap_low + 2 * ALIGNMENT); // this is for later checking!
     // DS_consistency_checker();
     return 0;
 }
@@ -153,6 +147,7 @@ void mm_free(void *ptr) {
     size_t *footer = (size_t *)((char *)header + size + SIZE_T_SIZE);
 
     coalesce_right(header, &footer);
+
     coalesce_left(&header, footer);
     mark_free(header, footer);
     head_insert(header);
@@ -182,7 +177,6 @@ void *mm_realloc(void *ptr, size_t size) {
     size_t *footer = GET_FOOTER_FROM_HEADER(header);
     coalesce_right(header, &footer);
     coalesce_left(&header, footer);
-    // TODO the data will remain intact! how to assert?
     size_t copy_size = MIN(old_size, new_size);
     if (GET_SIZE(header) >= new_size) {
         // current block is still used!
@@ -241,8 +235,7 @@ void extract_node(size_t *header) {
     size_t *previous_header = (size_t *)PREV_HEADER(header);
     size_t *next_header = (size_t *)NEXT_HEADER(header);
     if (previous_header == 0) {
-        size_t **rootp = get_root_pointer(LIST_INDEX(header));
-        *rootp = next_header;
+        root[LIST_INDEX(header)] = (size_t)next_header;
     } else {
         NEXT_HEADER(previous_header) = (size_t)next_header;
     }
@@ -256,14 +249,13 @@ void extract_node(size_t *header) {
 void head_insert(size_t *header) {
     size_t size = GET_SIZE(header);
     index_t index = which_list(size);
-    size_t *next = get_root(index);
+    size_t *next_header = (size_t *)root[index];
 
     PREV_HEADER(header) = 0;
-    NEXT_HEADER(header) = (size_t)next;
-    size_t **rootp = get_root_pointer(index);
-    *rootp = header;
-    if (!IS_LAST(next)) {
-        PREV_HEADER(next) = (size_t)header;
+    NEXT_HEADER(header) = (size_t)next_header;
+    root[index] = (size_t)header;
+    if (!IS_LAST(next_header)) {
+        PREV_HEADER(next_header) = (size_t)header;
     }
     LIST_INDEX(header) = index;
 }
@@ -302,31 +294,6 @@ void set_size(size_t *header, size_t *footer, size_t newsize) {
     memmove(footer, header, ALIGNMENT);
 }
 
-size_t *get_root(index_t index) {
-    switch (index) {
-    case 0:
-        return list_root_0;
-        // no need to break
-    case 1:
-        return list_root_1;
-    // no need to break
-    default:
-        assert(0);
-    }
-}
-size_t **get_root_pointer(index_t index) {
-    switch (index) {
-    case 0:
-        return &list_root_0;
-        // no need to break
-    case 1:
-        return &list_root_1;
-        // no need to break
-    default:
-        assert(0);
-    }
-}
-
 /*
     merge current free block with right block
     get a big free block, pointer is not set yet
@@ -347,7 +314,7 @@ void coalesce_right(size_t *header, size_t **footer_p) {
                  size + GET_SIZE(right_header) + 2 * SIZE_T_SIZE);
         *footer_p = footer;
     } else {
-        assert(IS_HIGH(footer) || IS_ALLOC(right_header)); // TODO this is good
+        assert(IS_HIGH(footer) || IS_ALLOC(right_header));
     }
 }
 
@@ -375,8 +342,9 @@ void coalesce_left(size_t **header_p, size_t *footer) {
 }
 
 void DS_consistency_checker() {
-    list_consistency_checker(list_root_0);
-    list_consistency_checker(list_root_1);
+    for (size_t i = 0; i < 3; i++) {
+        list_consistency_checker((size_t *)root[i]);
+    }
     block_consistency_checker();
 }
 
@@ -392,8 +360,8 @@ void list_consistency_checker(size_t *root) {
 }
 
 void block_consistency_checker() {
-    // check all block
-    size_t *header = (size_t *)((char *)heap_low + ALIGNMENT);
+    // check all block from the first header
+    size_t *header = first_block_header;
     while ((size_t)header < (size_t)heap_high) {
         size_t *footer = GET_FOOTER_FROM_HEADER(header);
         assert(GET_SIZE(header) == GET_SIZE(footer));
@@ -408,16 +376,19 @@ void block_consistency_checker() {
 }
 
 index_t which_list(size_t size) {
-    if (size >= 128 * ALIGNMENT) {
+    if (size <= 128) {
         return 0;
+    } else if (size > 8192) {
+        return 2;
     } else {
         return 1;
     }
 }
 
+/* check if a free block is in accordant list */
 bool in_list(size_t *header) {
     index_t index = which_list(GET_SIZE(header));
-    size_t *curr_header = get_root(index);
+    size_t *curr_header = (size_t *)root[index];
     while (!IS_LAST(curr_header)) {
         if (curr_header == header) {
             return true;
@@ -430,11 +401,12 @@ bool in_list(size_t *header) {
 
 /* get a block whose size is bigger than newsize */
 size_t *get_free_block(size_t newsize) {
-    size_t *root = get_root(which_list(newsize));
+    index_t i = which_list(newsize);
     size_t *header;
-    while (root) {
+    // TODO this is magic number!
+    while (i < 3) {
         // search within that list!
-        header = root;
+        header = (size_t *)root[i];
         while (!IS_LAST(header)) {
             assert(IS_FREE(header));
             if (newsize <= GET_SIZE(header)) {
@@ -444,20 +416,9 @@ size_t *get_free_block(size_t newsize) {
             header = (size_t *)NEXT_HEADER(header);
         } // not found in that list
         // update
-        root = next_bigger_root(root);
+        i++;
     } // not found in all list
     header = expand(newsize);
 FOUND:
     return header;
-}
-
-size_t *next_bigger_root(size_t *root) {
-    // list root 0 is bigger!
-    // TODO store root in memory will be better
-    assert(root == list_root_0 || root == list_root_1);
-    if (root == list_root_0) {
-        return NULL;
-    } else {
-        return list_root_0;
-    }
 }
