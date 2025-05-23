@@ -617,8 +617,6 @@ static int eval_mm_valid(trace_t *trace, int tracenum, range_t **ranges) {
 
             /* Call the student's realloc */
             oldp = trace->blocks[index];
-            // TODO delete later
-            assert(oldp[0] == (index & 0xFF));
             if ((newp = mm_realloc(oldp, size)) == NULL) {
                 malloc_error(tracenum, i, "mm_realloc failed.");
                 return 0;
