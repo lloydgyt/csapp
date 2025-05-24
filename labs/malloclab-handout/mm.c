@@ -55,7 +55,6 @@ typedef unsigned short index_t;
 #define IS_LAST(header) (*(header) == 1)
 #define PREV_HEADER(header) ((header)[2])
 #define NEXT_HEADER(header) ((header)[3])
-// TODO this is important!
 #define LIST_INDEX(header) ((header)[1])
 #define GET_SIZE(header) (*(header) & ~0x7)
 #define GET_FOOTER_FROM_HEADER(header)                                         \
@@ -76,21 +75,24 @@ static size_t realloc_counter = 0;
 static size_t *first_block_header;
 
 /* prototype */
+/* low-level (byte layout) */
+// TODO is there a way to abstract?
 void extract_node(size_t *header);
 void head_insert(size_t *header);
 size_t *expand(size_t request_size);
 void mark_free(size_t *header, size_t *footer);
 void mark_allocated(size_t *header, size_t *footer);
 void set_size(size_t *header, size_t *footer, size_t newsize);
-void coalesce_right(size_t *header, size_t **footer_p);
-void coalesce_left(size_t **header_p, size_t *footer);
 void DS_consistency_checker();
 void list_consistency_checker(size_t *root);
 void block_consistency_checker();
 index_t which_list(size_t size);
-bool in_list(size_t *header);
-size_t *get_free_block(size_t newsize);
+size_t *find_free_block_from_list(size_t newsize);
+/* medium-level (block,header,list) layout) */
+void coalesce_right(size_t *header, size_t **footer_p);
+void coalesce_left(size_t **header_p, size_t *footer);
 void split(size_t *header, size_t **footer_p, size_t newsize);
+bool in_list(size_t *header, size_t *list_root);
 
 /*
  * mm_init - initialize the malloc package.
@@ -116,20 +118,21 @@ int mm_init(void) {
  *     Always allocate a block whose size is a multiple of the alignment.
  */
 void *mm_malloc(size_t size) {
-    // TODO how to handle this?
     assert(size != 0);
 
     malloc_counter++;
     // printf("malloc times = %u\n", malloc_counter++);
     // add ALIGNMENT so that realloc can expand in place!
+    // this boost performance!
     int newsize = ALIGN(size) + ALIGNMENT;
-
-    size_t *header = get_free_block(newsize);
+    size_t *header;
+    if ((header = find_free_block_from_list(newsize)) == NULL) {
+        header = expand(newsize);
+    }
     size_t *footer = GET_FOOTER_FROM_HEADER(header);
-
     assert(IS_FREE(header) && (newsize <= GET_SIZE(header)));
-    split(header, &footer, newsize);
     extract_node(header);
+    split(header, &footer, newsize);
     mark_allocated(header, GET_FOOTER_FROM_HEADER(header));
     assert(IS_ALLOC(header));
     assert(IS_ALIGN((void *)((char *)header + SIZE_T_SIZE)));
@@ -151,7 +154,6 @@ void mm_free(void *ptr) {
     size_t *footer = (size_t *)((char *)header + size + SIZE_T_SIZE);
 
     coalesce_right(header, &footer);
-
     coalesce_left(&header, footer);
     mark_free(header, footer);
     head_insert(header);
@@ -165,10 +167,6 @@ void mm_free(void *ptr) {
  */
 void *mm_realloc(void *ptr, size_t size) {
     assert(ptr && size);
-    // TODO actually there is more requirement!
-    // what if ptr is NULL??
-    // what if size is 0??
-
     realloc_counter++;
     // printf("realloc times = %u\n", realloc_counter++);
 
@@ -187,18 +185,17 @@ void *mm_realloc(void *ptr, size_t size) {
         new_ptr = (void *)((char *)header + SIZE_T_SIZE);
         if (new_ptr != ptr) {
             // left coalesce happened
-            // TODO maybe using memcpy? will it boost up?! probably!
             memcpy(new_ptr, ptr, copy_size);
         }
         // must place here, so that data won't be compromised!
+        // preserve extra 128 byte for original block to allow in-place
+        // expansion on next realloc
         split(header, &footer, new_size + 128);
         mark_allocated(header, footer);
     } else {
-        // look for new one!
         new_ptr = mm_malloc(new_size);
         // copy content min(old, new) bytes to new block
         memcpy(new_ptr, ptr, copy_size);
-
         // free older block
         mark_free(header, footer);
         head_insert(header);
@@ -209,7 +206,7 @@ void *mm_realloc(void *ptr, size_t size) {
 
 /* HELPER FUNCTION */
 /*
-    may split a free into 2, insert the right free block
+    may split a block into 2, insert the right free block
 */
 void split(size_t *header, size_t **footer_p, size_t newsize) {
     size_t oldsize = GET_SIZE(header);
@@ -250,8 +247,9 @@ void extract_node(size_t *header) {
     } // TODO this is so ugly! use dummy node to refactor!
 }
 
-// TODO should also pass size!
+/* head insert a block into its list */
 void head_insert(size_t *header) {
+    assert(IS_FREE(header));
     size_t size = GET_SIZE(header);
     index_t index = which_list(size);
     size_t *next_header = (size_t *)root[index];
@@ -285,6 +283,7 @@ size_t *expand(size_t request_size) {
 }
 
 void mark_free(size_t *header, size_t *footer) {
+    // assume that footer and header is of size ALIGNMENT
     *header &= ~0x1;
     memcpy(footer, header, ALIGNMENT);
 }
@@ -371,7 +370,7 @@ void block_consistency_checker() {
         size_t *footer = GET_FOOTER_FROM_HEADER(header);
         assert(GET_SIZE(header) == GET_SIZE(footer));
         if (IS_FREE(header)) {
-            assert((in_list(header)));
+            assert(in_list(header, (size_t *)root[LIST_INDEX(header)]));
         } else {
             assert(IS_ALLOC(header));
         }
@@ -391,9 +390,8 @@ index_t which_list(size_t size) {
 }
 
 /* check if a free block is in accordant list */
-bool in_list(size_t *header) {
-    index_t index = which_list(GET_SIZE(header));
-    size_t *curr_header = (size_t *)root[index];
+bool in_list(size_t *header, size_t *list_root) {
+    size_t *curr_header = list_root;
     while (!IS_LAST(curr_header)) {
         if (curr_header == header) {
             return true;
@@ -405,17 +403,18 @@ bool in_list(size_t *header) {
 }
 
 /* get a block whose size is bigger than newsize */
-size_t *get_free_block(size_t newsize) {
+// using first fit
+size_t *find_free_block_from_list(size_t newsize) {
+
     index_t i = which_list(newsize);
     size_t *header;
     // TODO this is magic number!
     while (i < 3) {
-        // search within that list!
         header = (size_t *)root[i];
         while (!IS_LAST(header)) {
             assert(IS_FREE(header));
             if (newsize <= GET_SIZE(header)) {
-                goto FOUND;
+                return header;
             }
             // update
             header = (size_t *)NEXT_HEADER(header);
@@ -423,7 +422,5 @@ size_t *get_free_block(size_t newsize) {
         // update
         i++;
     } // not found in all list
-    header = expand(newsize);
-FOUND:
-    return header;
+    return NULL;
 }
