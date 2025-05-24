@@ -11,7 +11,7 @@ CFLAGS_DEBUG = -m32 -g
 
 OBJS = mdriver.o mm.o memlib.o fsecs.o fcyc.o clock.o ftimer.o
 
-TRACE = traces/binary-bal.rep
+TRACE = traces/realloc2-bal.rep
 
 mdriver: $(OBJS)
 	$(CC) $(CFLAGS) -o mdriver $(OBJS)

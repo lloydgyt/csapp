@@ -42,6 +42,7 @@ typedef unsigned short index_t;
 #define INCR (1 << 10)
 #define ROUND_UP(size) (((size) + (INCR) - 1) & ~((INCR) - 1))
 #define THRESHOLD (ALIGNMENT * (1 << 3))
+// #define THRESHOLD (ALIGNMENT * 3) // this is the least requirement
 #define MIN(a, b) ((a) > (b) ? (b) : (a))
 
 /* rounds up to the nearest multiple of ALIGNMENT */
@@ -75,7 +76,6 @@ static size_t realloc_counter = 0;
 static size_t *first_block_header;
 
 /* prototype */
-void split(size_t *header, size_t newsize);
 void extract_node(size_t *header);
 void head_insert(size_t *header);
 size_t *expand(size_t request_size);
@@ -90,6 +90,7 @@ void block_consistency_checker();
 index_t which_list(size_t size);
 bool in_list(size_t *header);
 size_t *get_free_block(size_t newsize);
+void split(size_t *header, size_t **footer_p, size_t newsize);
 
 /*
  * mm_init - initialize the malloc package.
@@ -120,11 +121,14 @@ void *mm_malloc(size_t size) {
 
     malloc_counter++;
     // printf("malloc times = %u\n", malloc_counter++);
-    int newsize = ALIGN(size);
+    // add ALIGNMENT so that realloc can expand in place!
+    int newsize = ALIGN(size) + ALIGNMENT;
+
     size_t *header = get_free_block(newsize);
+    size_t *footer = GET_FOOTER_FROM_HEADER(header);
 
     assert(IS_FREE(header) && (newsize <= GET_SIZE(header)));
-    split(header, newsize);
+    split(header, &footer, newsize);
     extract_node(header);
     mark_allocated(header, GET_FOOTER_FROM_HEADER(header));
     assert(IS_ALLOC(header));
@@ -180,20 +184,20 @@ void *mm_realloc(void *ptr, size_t size) {
     size_t copy_size = MIN(old_size, new_size);
     if (GET_SIZE(header) >= new_size) {
         // current block is still used!
-        mark_allocated(header, footer);
         new_ptr = (void *)((char *)header + SIZE_T_SIZE);
         if (new_ptr != ptr) {
             // left coalesce happened
             // TODO maybe using memcpy? will it boost up?! probably!
-            memmove(new_ptr, ptr, copy_size);
+            memcpy(new_ptr, ptr, copy_size);
         }
-        // TODO need to split?
-        // TODO why want to merge and then split? how to reduce?
+        // must place here, so that data won't be compromised!
+        split(header, &footer, new_size + 128);
+        mark_allocated(header, footer);
     } else {
         // look for new one!
         new_ptr = mm_malloc(new_size);
         // copy content min(old, new) bytes to new block
-        memmove(new_ptr, ptr, copy_size);
+        memcpy(new_ptr, ptr, copy_size);
 
         // free older block
         mark_free(header, footer);
@@ -207,17 +211,18 @@ void *mm_realloc(void *ptr, size_t size) {
 /*
     may split a free into 2, insert the right free block
 */
-void split(size_t *header, size_t newsize) {
+void split(size_t *header, size_t **footer_p, size_t newsize) {
     size_t oldsize = GET_SIZE(header);
     if (newsize + THRESHOLD <= oldsize) {
-        size_t *footer_left =
-            (size_t *)((char *)header + newsize + SIZE_T_SIZE);
+        // if old chunk is bigger than requested, then split
+
+        *footer_p = (size_t *)((char *)header + newsize + SIZE_T_SIZE);
         size_t *footer_right =
             (size_t *)((char *)header + oldsize + SIZE_T_SIZE);
-        size_t *header_right = (size_t *)((char *)footer_left + SIZE_T_SIZE);
+        size_t *header_right = (size_t *)((char *)(*footer_p) + SIZE_T_SIZE);
 
         // set left meta-data
-        set_size(header, footer_left, newsize);
+        set_size(header, *footer_p, newsize);
 
         // set right meta-data
         size_t remain_size = oldsize - newsize - 2 * SIZE_T_SIZE;
@@ -281,17 +286,17 @@ size_t *expand(size_t request_size) {
 
 void mark_free(size_t *header, size_t *footer) {
     *header &= ~0x1;
-    memmove(footer, header, ALIGNMENT);
+    memcpy(footer, header, ALIGNMENT);
 }
 
 void mark_allocated(size_t *header, size_t *footer) {
     *header |= 0x1;
-    memmove(footer, header, ALIGNMENT);
+    memcpy(footer, header, ALIGNMENT);
 }
 
 void set_size(size_t *header, size_t *footer, size_t newsize) {
     *header = newsize;
-    memmove(footer, header, ALIGNMENT);
+    memcpy(footer, header, ALIGNMENT);
 }
 
 /*
@@ -376,9 +381,9 @@ void block_consistency_checker() {
 }
 
 index_t which_list(size_t size) {
-    if (size <= 128) {
+    if (size < 128) {
         return 0;
-    } else if (size > 8192) {
+    } else if (size >= 512) {
         return 2;
     } else {
         return 1;

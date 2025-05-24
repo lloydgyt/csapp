@@ -76,3 +76,82 @@ Total          73%  112372  0.050998  2203
 
 Perf index = 44 (util) + 4 (thru) = 48/100
 """ END """
+
+""" BEGIN seg list with free before malloc (13, 7) """
+Results for mm malloc:
+trace  valid  util     ops      secs  Kops
+ 0       yes   93%    5694  0.000249 22877
+ 1       yes   93%    5848  0.000255 22978
+ 2       yes   96%    6648  0.000310 21466
+ 3       yes   97%    5380  0.000235 22894
+ 4       yes   67%   14400  0.000452 31887
+ 5       yes   87%    4800  0.000331 14510
+ 6       yes   87%    4800  0.000313 15355
+ 7       yes   54%   12000  0.003856  3112
+ 8       yes   47%   24000  0.033072   726
+ 9       yes   87%   14401  0.000381 37848
+10       yes   17%   14401  0.000379 37997
+Total          75%  112372  0.039830  2821
+
+Perf index = 45 (util) + 6 (thru) = 51/100
+""" END """
+
+""" BEGIN seg list with free before malloc (0, 10) """
+    not split after coalesce in realloc
+Results for mm malloc:
+trace  valid  util     ops      secs  Kops
+ 0       yes   89%    5694  0.000200 28442
+ 1       yes   91%    5848  0.000189 30958
+ 2       yes   95%    6648  0.000239 27839
+ 3       yes   96%    5380  0.000198 27144
+ 4       yes   80%   14400  0.000414 34757
+ 5       yes   86%    4800  0.000450 10679
+ 6       yes   84%    4800  0.000445 10794
+ 7       yes   52%   12000  0.000536 22392
+ 8       yes   43%   24000  0.002343 10242
+ 9       yes   83%   14401  0.000363 39672
+10       yes   14%   14401  0.000326 44134
+Total          74%  112372  0.005703 19704
+
+Perf index = 44 (util) + 39 (thru) = 84/100
+""" END """
+
+""" BEGIN seg list with free before malloc (0, 10) """
+    split after coalesce in realloc
+Results for mm malloc:
+trace  valid  util     ops      secs  Kops
+ 0       yes   89%    5694  0.000204 27939
+ 1       yes   91%    5848  0.000192 30427
+ 2       yes   95%    6648  0.000246 27068
+ 3       yes   96%    5380  0.000195 27604
+ 4       yes   80%   14400  0.000391 36829
+ 5       yes   86%    4800  0.000428 11207
+ 6       yes   84%    4800  0.000437 10979
+ 7       yes   52%   12000  0.000554 21676
+ 8       yes   43%   24000  0.002240 10713
+ 9       yes   37%   14401  0.010552  1365
+10       yes   34%   14401  0.001484  9705
+Total          72%  112372  0.016922  6641
+
+Perf index = 43 (util) + 13 (thru) = 56/100
+""" END """
+
+""" BEGIN seg list with free before malloc (0, 10) """
+    with split after coalesce (not giving out all spare space in spliting)
+Results for mm malloc:
+trace  valid  util     ops      secs  Kops
+ 0       yes   89%    5694  0.000202 28258
+ 1       yes   91%    5848  0.000185 31645
+ 2       yes   95%    6648  0.000234 28410
+ 3       yes   96%    5380  0.000192 28079
+ 4       yes   80%   14400  0.000387 37171
+ 5       yes   86%    4800  0.000406 11820
+ 6       yes   84%    4800  0.000433 11078
+ 7       yes   52%   12000  0.000517 23215
+ 8       yes   43%   24000  0.002170 11059
+ 9       yes  100%   14401  0.000382 37738
+10       yes   98%   14401  0.000322 44793
+Total          83%  112372  0.005429 20699
+
+Perf index = 50 (util) + 40 (thru) = 90/100
+""" END """
