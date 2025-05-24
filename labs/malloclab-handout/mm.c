@@ -79,7 +79,7 @@ static size_t *first_block_header;
 // TODO is there a way to abstract?
 void extract_node(size_t *header);
 void head_insert(size_t *header);
-size_t *expand(size_t request_size);
+size_t *get_free_block_from_expand(size_t request_size);
 void mark_free(size_t *header, size_t *footer);
 void mark_allocated(size_t *header, size_t *footer);
 void set_size(size_t *header, size_t *footer, size_t newsize);
@@ -91,7 +91,8 @@ size_t *find_free_block_from_list(size_t newsize);
 /* medium-level (block,header,list) layout) */
 void coalesce_right(size_t *header, size_t **footer_p);
 void coalesce_left(size_t **header_p, size_t *footer);
-void split(size_t *header, size_t **footer_p, size_t newsize);
+void split_block(size_t *header, size_t **footer_p, size_t newsize,
+                 size_t oldsize);
 bool in_list(size_t *header, size_t *list_root);
 
 /*
@@ -127,12 +128,18 @@ void *mm_malloc(size_t size) {
     int newsize = ALIGN(size) + ALIGNMENT;
     size_t *header;
     if ((header = find_free_block_from_list(newsize)) == NULL) {
-        header = expand(newsize);
+        header = get_free_block_from_expand(newsize);
     }
-    size_t *footer = GET_FOOTER_FROM_HEADER(header);
     assert(IS_FREE(header) && (newsize <= GET_SIZE(header)));
+    size_t *footer = GET_FOOTER_FROM_HEADER(header);
+
     extract_node(header);
-    split(header, &footer, newsize);
+
+    size_t oldsize = GET_SIZE(header);
+    if (newsize + THRESHOLD <= oldsize) {
+        split_block(header, &footer, newsize, oldsize);
+    }
+
     mark_allocated(header, GET_FOOTER_FROM_HEADER(header));
     assert(IS_ALLOC(header));
     assert(IS_ALIGN((void *)((char *)header + SIZE_T_SIZE)));
@@ -172,14 +179,14 @@ void *mm_realloc(void *ptr, size_t size) {
 
     size_t *header = (size_t *)((char *)ptr - ALIGNMENT);
     assert(IS_ALLOC(header));
-    size_t old_size = GET_SIZE(header);
     size_t new_size = ALIGN(size);
     void *new_ptr;
 
     size_t *footer = GET_FOOTER_FROM_HEADER(header);
     coalesce_right(header, &footer);
     coalesce_left(&header, footer);
-    size_t copy_size = MIN(old_size, new_size);
+    size_t current_size = GET_SIZE(header);
+    size_t copy_size = MIN(current_size, new_size);
     if (GET_SIZE(header) >= new_size) {
         // current block is still used!
         new_ptr = (void *)((char *)header + SIZE_T_SIZE);
@@ -190,7 +197,11 @@ void *mm_realloc(void *ptr, size_t size) {
         // must place here, so that data won't be compromised!
         // preserve extra 128 byte for original block to allow in-place
         // expansion on next realloc
-        split(header, &footer, new_size + 128);
+        size_t split_size = new_size + 128;
+        if (split_size + THRESHOLD <= current_size) {
+            split_block(header, &footer, split_size, current_size);
+        }
+
         mark_allocated(header, footer);
     } else {
         new_ptr = mm_malloc(new_size);
@@ -208,27 +219,22 @@ void *mm_realloc(void *ptr, size_t size) {
 /*
     may split a block into 2, insert the right free block
 */
-void split(size_t *header, size_t **footer_p, size_t newsize) {
-    size_t oldsize = GET_SIZE(header);
-    if (newsize + THRESHOLD <= oldsize) {
-        // if old chunk is bigger than requested, then split
+void split_block(size_t *header, size_t **footer_p, size_t newsize,
+                 size_t oldsize) {
 
-        *footer_p = (size_t *)((char *)header + newsize + SIZE_T_SIZE);
-        size_t *footer_right =
-            (size_t *)((char *)header + oldsize + SIZE_T_SIZE);
-        size_t *header_right = (size_t *)((char *)(*footer_p) + SIZE_T_SIZE);
+    size_t *footer_right = *footer_p;
+    *footer_p = (size_t *)((char *)header + newsize + SIZE_T_SIZE);
+    size_t *header_right = (size_t *)((char *)(*footer_p) + SIZE_T_SIZE);
 
-        // set left meta-data
-        set_size(header, *footer_p, newsize);
+    // set left meta-data
+    set_size(header, *footer_p, newsize);
 
-        // set right meta-data
-        size_t remain_size = oldsize - newsize - 2 * SIZE_T_SIZE;
-        set_size(header_right, footer_right, remain_size);
-        // set pointer (header insert)
-        head_insert(header_right);
-        assert(IS_FREE(header_right));
-    }
-    return;
+    // set right meta-data
+    size_t remain_size = oldsize - newsize - 2 * SIZE_T_SIZE;
+    set_size(header_right, footer_right, remain_size);
+    // set pointer (header insert)
+    head_insert(header_right);
+    assert(IS_FREE(header_right));
 }
 
 // handle list invariant, take node out of list
@@ -264,7 +270,7 @@ void head_insert(size_t *header) {
 }
 
 /* expand the heap and return a pointer that is ready to use */
-size_t *expand(size_t request_size) {
+size_t *get_free_block_from_expand(size_t request_size) {
     size_t expand_size = ROUND_UP(request_size + 2 * ALIGNMENT);
     void *p = mem_sbrk(expand_size);
     assert(p != (void *)-1);
