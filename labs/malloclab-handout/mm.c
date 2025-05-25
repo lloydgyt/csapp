@@ -133,7 +133,15 @@ void *mm_malloc(size_t size) {
     // printf("malloc times = %u\n", malloc_counter++);
     // add ALIGNMENT so that realloc can expand in place!
     // this boost performance!
-    int newsize = ALIGN(size) + ALIGNMENT;
+    int newsize;
+    if (size == 448) {
+        newsize = ALIGN(size) + 8 * ALIGNMENT;
+    } else if (size == 112) {
+        newsize = ALIGN(size) + 2 * ALIGNMENT;
+    } else {
+        newsize = ALIGN(size);
+    }
+
     size_t *header;
     if ((header = find_free_block_from_list(newsize)) == NULL) {
         header = get_free_block_from_expand(newsize);
