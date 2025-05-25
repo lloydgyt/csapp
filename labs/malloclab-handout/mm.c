@@ -37,46 +37,53 @@ team_t team = {
     ""};
 
 typedef unsigned short index_t;
-/* single word (4) or double word (8) alignment */
-#define ALIGNMENT 8
+/* parameter */
+#define ALIGNMENT (8)
+#define ALIGNMENT_MASK (ALIGNMENT - 1)
 #define INCR (1 << 10)
-#define ROUND_UP(size) (((size) + (INCR) - 1) & ~((INCR) - 1))
+#define INCR_MASK (INCR - 1)
 #define THRESHOLD (ALIGNMENT * (1 << 3))
-// #define THRESHOLD (ALIGNMENT * 3) // this is the least requirement
-#define MIN(a, b) ((a) > (b) ? (b) : (a))
-
-/* rounds up to the nearest multiple of ALIGNMENT */
-#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
-
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
-#define IS_ALIGN(header) (((size_t)(header) & 0x7) == 0)
-#define IS_FREE(header) ((*(header) & 0x1) == 0)
-#define IS_ALLOC(header) ((*(header) & 0x1) == 1)
-#define IS_LAST(header) (*(header) == 1)
+/* rounds up to the nearest multiple of ALIGNMENT */
+
+/* list related */
 #define PREV_HEADER(header) ((header)[2])
 #define NEXT_HEADER(header) ((header)[3])
 #define LIST_INDEX(header) ((header)[1])
-#define GET_SIZE(header) (*(header) & ~0x7)
-#define GET_FOOTER_FROM_HEADER(header)                                         \
-    ((size_t *)((char *)(header) + (GET_SIZE(header)) + (SIZE_T_SIZE)))
-#define GET_HEADER_FROM_FOOTER(footer)                                         \
-    ((size_t *)((char *)(footer) - (GET_SIZE(footer)) - (SIZE_T_SIZE)))
-#define IS_LOW(header) ((header) == first_block_header)
-#define IS_HIGH(header) ((char *)(header) == (heap_high - (ALIGNMENT) + 1))
+#define IS_LAST(header) (*(header) == 1)
 
+/* block metadata */
+#define IS_FREE(header) ((*(header) & 0x1) == 0)
+#define IS_ALLOC(header) ((*(header) & 0x1) == 1)
+#define GET_SIZE(header) (*(header) & ~ALIGNMENT_MASK)
+#define GET_FOOTER_FROM_HEADER(header)                                         \
+    ((size_t *)((char *)(header) + GET_SIZE(header) + SIZE_T_SIZE))
+#define GET_HEADER_FROM_FOOTER(footer)                                         \
+    ((size_t *)((char *)(footer) - GET_SIZE(footer) - SIZE_T_SIZE))
+
+/* heap layout related*/
+#define IS_LOW(header) ((header) == first_block_header)
+#define IS_HIGH(header) ((char *)(header) == (heap_high - ALIGNMENT + 1))
+
+/* helper function */
+#define ROUND_UP(size) (((size) + INCR_MASK) & ~INCR_MASK)
+#define ALIGN(size) (((size) + ALIGNMENT_MASK) & ~ALIGNMENT_MASK)
+#define IS_ALIGN(header) (((size_t)(header) & ALIGNMENT_MASK) == 0)
+#define MIN(a, b) ((a) > (b) ? (b) : (a))
+
+/* global variable*/
 // static size_t *list_root_0; // points to the bigger list
 // static size_t *list_root_1; // points to the small list
 static char *heap_low;  // points to the first byte in heap
 static char *heap_high; // points to the last byte in heap
 static size_t *root;
-static size_t malloc_counter = 0;
-static size_t free_counter = 0;
-static size_t realloc_counter = 0;
+// static size_t malloc_counter = 0;
+// static size_t free_counter = 0;
+// static size_t realloc_counter = 0;
 static size_t *first_block_header;
 
 /* prototype */
 /* low-level (byte layout) */
-// TODO is there a way to abstract?
 void extract_node(size_t *header);
 void head_insert(size_t *header);
 size_t *get_free_block_from_expand(size_t request_size);
@@ -88,6 +95,7 @@ void list_consistency_checker(size_t *root);
 void block_consistency_checker();
 index_t which_list(size_t size);
 size_t *find_free_block_from_list(size_t newsize);
+
 /* medium-level (block,header,list) layout) */
 void coalesce_right(size_t *header, size_t **footer_p);
 void coalesce_left(size_t **header_p, size_t *footer);
@@ -121,7 +129,7 @@ int mm_init(void) {
 void *mm_malloc(size_t size) {
     assert(size != 0);
 
-    malloc_counter++;
+    // malloc_counter++;
     // printf("malloc times = %u\n", malloc_counter++);
     // add ALIGNMENT so that realloc can expand in place!
     // this boost performance!
@@ -134,7 +142,6 @@ void *mm_malloc(size_t size) {
     size_t *footer = GET_FOOTER_FROM_HEADER(header);
 
     extract_node(header);
-
     size_t oldsize = GET_SIZE(header);
     if (newsize + THRESHOLD <= oldsize) {
         split_block(header, &footer, newsize, oldsize);
@@ -144,7 +151,6 @@ void *mm_malloc(size_t size) {
     assert(IS_ALLOC(header));
     assert(IS_ALIGN((void *)((char *)header + SIZE_T_SIZE)));
     assert(GET_SIZE(header) >= newsize);
-
     // DS_consistency_checker();
     return (void *)((char *)header + SIZE_T_SIZE);
 }
@@ -153,7 +159,8 @@ void *mm_malloc(size_t size) {
  * mm_free - Freeing a block does nothing.
  */
 void mm_free(void *ptr) {
-    free_counter++;
+    // ptr must come from a previous allocated function, how to assert?
+    // free_counter++;
     // printf("free times = %u\n", free_counter++);
     size_t *header = (size_t *)((char *)ptr - SIZE_T_SIZE);
     assert(IS_ALLOC(header));
@@ -164,7 +171,6 @@ void mm_free(void *ptr) {
     coalesce_left(&header, footer);
     mark_free(header, footer);
     head_insert(header);
-
     // DS_consistency_checker();
     return;
 }
@@ -174,7 +180,7 @@ void mm_free(void *ptr) {
  */
 void *mm_realloc(void *ptr, size_t size) {
     assert(ptr && size);
-    realloc_counter++;
+    // realloc_counter++;
     // printf("realloc times = %u\n", realloc_counter++);
 
     size_t *header = (size_t *)((char *)ptr - ALIGNMENT);
@@ -186,22 +192,20 @@ void *mm_realloc(void *ptr, size_t size) {
     coalesce_right(header, &footer);
     coalesce_left(&header, footer);
     size_t current_size = GET_SIZE(header);
-    size_t copy_size = MIN(current_size, new_size);
-    if (GET_SIZE(header) >= new_size) {
+    const size_t copy_size = MIN(current_size, new_size);
+    if (current_size >= new_size) {
         // current block is still used!
         new_ptr = (void *)((char *)header + SIZE_T_SIZE);
         if (new_ptr != ptr) {
             // left coalesce happened
             memcpy(new_ptr, ptr, copy_size);
         }
-        // must place here, so that data won't be compromised!
-        // preserve extra 128 byte for original block to allow in-place
-        // expansion on next realloc
+        // split() must place here, so that data won't be compromised!
+        // extra 128 byte to allow in-place expansion on next realloc
         size_t split_size = new_size + 128;
         if (split_size + THRESHOLD <= current_size) {
             split_block(header, &footer, split_size, current_size);
         }
-
         mark_allocated(header, footer);
     } else {
         new_ptr = mm_malloc(new_size);
@@ -221,7 +225,6 @@ void *mm_realloc(void *ptr, size_t size) {
 */
 void split_block(size_t *header, size_t **footer_p, size_t newsize,
                  size_t oldsize) {
-
     size_t *footer_right = *footer_p;
     *footer_p = (size_t *)((char *)header + newsize + SIZE_T_SIZE);
     size_t *header_right = (size_t *)((char *)(*footer_p) + SIZE_T_SIZE);
